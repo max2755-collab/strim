@@ -1,13 +1,13 @@
-# Strim
+# onPitch
 
-Native iOS multi-destination RTMP(S) live streaming app.
+Native iOS multi-destination RTMP(S) live streaming app — built for the pitch.
 
-Stream your phone camera to YouTube, Twitch, VK Live, or any RTMP ingest by pasting an ingest URL and stream key. Multiple destinations can go live at the same time.
+Stream your phone camera to YouTube, Twitch, VK Live, or any RTMP ingest by pasting an ingest URL and stream key. Multiple destinations can go live at the same time, with an LFL-style scorebug burned into the feed.
 
 ## Requirements
 
 - Xcode 16+
-- iOS 16+
+- iOS 17+
 - Physical iPhone/iPad recommended (camera + network)
 
 ## Setup
@@ -16,10 +16,10 @@ Stream your phone camera to YouTube, Twitch, VK Live, or any RTMP ingest by past
 # Generate the Xcode project (XcodeGen)
 brew install xcodegen   # if needed
 xcodegen generate
-open Strim.xcodeproj
+open OnPitch.xcodeproj
 ```
 
-1. Select your Development Team in the Strim target signing settings.
+1. Select your Development Team in the app target signing settings.
 2. Build & run on a device.
 3. Allow Camera and Microphone permissions.
 
@@ -38,19 +38,5 @@ open Strim.xcodeproj
 | YouTube  | `rtmp://a.rtmp.youtube.com/live2` (or `rtmps://…`) |
 | Twitch   | `rtmp://live.twitch.tv/app` |
 | VK Live  | URL from the broadcast cabinet |
-| Custom   | Any `rtmp://` or `rtmps://` server |
 
-The app appends your stream key as the final path segment: `url/streamKey`.
-
-## Architecture
-
-- **SwiftUI** UI
-- **HaishinKit** + **RTMPHaishinKit** for capture, H.264/AAC encode, and RTMP publish
-- One `MediaMixer` fans out to N RTMP sessions
-- Stream keys stored in **Keychain**; destination metadata in UserDefaults
-
-## Notes
-
-- Streaming runs in the foreground only (MVP).
-- Prefer Wi‑Fi; multi-stream at 1080p is heavy on CPU and uplink.
-- Prefer `rtmps://` when the platform supports it.
+Stream keys stay in the Keychain; never commit them.

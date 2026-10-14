@@ -1,49 +1,67 @@
-name: Strim
+name: OnPitch
 options:
-  bundleIdPrefix: com.strim
+  bundleIdPrefix: com.onpitch
   deploymentTarget:
-    iOS: "16.0"
+    iOS: "17.0"
   createIntermediateGroups: true
   groupSortPosition: top
 settings:
   base:
     SWIFT_VERSION: "6.0"
     TARGETED_DEVICE_FAMILY: "1,2"
-    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
 packages:
   HaishinKit:
     url: https://github.com/HaishinKit/HaishinKit.swift
     from: 2.2.0
 targets:
-  Strim:
+  OnPitch:
     type: application
     platform: iOS
     sources:
-      - path: Strim
+      - path: OnPitch
         excludes:
           - "**/Info.plist"
     resources:
-      - path: Strim/Resources/Assets.xcassets
+      - path: OnPitch/Resources/Assets.xcassets
+      - path: OnPitch/Resources/Fonts
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.strim.app
-        PRODUCT_NAME: Strim
+        PRODUCT_BUNDLE_IDENTIFIER: com.onpitch.app
+        PRODUCT_NAME: onPitch
+        PRODUCT_MODULE_NAME: OnPitch
         MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: "1"
         GENERATE_INFOPLIST_FILE: false
-        INFOPLIST_FILE: Strim/Info.plist
+        INFOPLIST_FILE: OnPitch/Info.plist
         TARGETED_DEVICE_FAMILY: "1,2"
         SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: false
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         CODE_SIGN_STYLE: Automatic
-        DEVELOPMENT_TEAM: ""
+        DEVELOPMENT_TEAM: "Q9TUP9JZJD"
         SWIFT_EMIT_LOC_STRINGS: true
         ENABLE_PREVIEWS: true
+        ENABLE_TESTABILITY: true
     dependencies:
       - package: HaishinKit
         product: HaishinKit
       - package: HaishinKit
         product: RTMPHaishinKit
     scheme:
-      testTargets: []
+      testTargets:
+        - OnPitchTests
+  OnPitchTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: OnPitchTests
+    dependencies:
+      - target: OnPitch
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.onpitch.app.tests
+        GENERATE_INFOPLIST_FILE: true
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/onPitch.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/onPitch"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
