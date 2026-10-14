@@ -1,90 +1,48 @@
 import SwiftUI
 
-/// Brand mark — live dot + outbound signal arcs (matches App Icon).
+/// Brand mark — signal dot + outbound arcs (matches App Icon).
 struct OnPitchLogoMark: View {
     var size: CGFloat = 96
     var animated: Bool = false
     var showsPlate: Bool = true
 
-    @State private var pulse = false
     @State private var wave = false
 
     var body: some View {
         ZStack {
-            Circle()
-                .fill(OnPitchTheme.live.opacity(0.22))
-                .frame(width: size * 1.15, height: size * 1.15)
-                .blur(radius: size * 0.18)
-                .scaleEffect(pulse ? 1.08 : 0.92)
-                .opacity(pulse ? 0.9 : 0.55)
-
             if showsPlate {
-                RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.14, green: 0.11, blue: 0.11),
-                                OnPitchTheme.ink
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
+                    .fill(OnPitchTheme.panel)
                     .frame(width: size, height: size)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
-                            .strokeBorder(OnPitchTheme.live.opacity(0.28), lineWidth: 1)
-                    )
-                    .shadow(color: OnPitchTheme.live.opacity(0.32), radius: size * 0.12, y: size * 0.04)
             }
 
-            ForEach(0..<3, id: \.self) { index in
+            ForEach(0..<2, id: \.self) { index in
                 SignalArc()
                     .stroke(
-                        OnPitchTheme.live.opacity(waveOpacity(for: index)),
-                        style: StrokeStyle(lineWidth: max(2, size * 0.045), lineCap: .round)
+                        OnPitchTheme.accent.opacity(index == 0 ? 1 : 0.45),
+                        style: StrokeStyle(lineWidth: max(2, size * 0.075), lineCap: .round)
                     )
-                    .frame(width: size * (0.42 + CGFloat(index) * 0.18), height: size * (0.42 + CGFloat(index) * 0.18))
-                    .offset(x: size * 0.02)
-                    .scaleEffect(wave ? 1.04 : 0.96)
+                    .frame(width: size * (0.46 + CGFloat(index) * 0.24), height: size * (0.46 + CGFloat(index) * 0.24))
+                    .offset(x: -size * 0.12)
+                    .opacity(animated ? (wave ? 1 : 0.35) : 1)
                     .animation(
                         animated
-                            ? .easeInOut(duration: 1.1)
-                                .repeatForever(autoreverses: true)
-                                .delay(Double(index) * 0.12)
+                            ? .easeInOut(duration: 0.9).repeatForever(autoreverses: true).delay(Double(index) * 0.2)
                             : .default,
                         value: wave
                     )
             }
 
             Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [OnPitchTheme.liveSoft, OnPitchTheme.liveDeep],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                .fill(OnPitchTheme.accent)
                 .frame(width: size * 0.22, height: size * 0.22)
-                .shadow(color: OnPitchTheme.live.opacity(0.7), radius: size * 0.06)
-                .scaleEffect(pulse ? 1.06 : 1.0)
+                .offset(x: -size * 0.12)
         }
-        .frame(width: size * 1.2, height: size * 1.2)
+        .frame(width: size, height: size)
         .accessibilityLabel("onPitch")
         .onAppear {
             guard animated else { return }
-            withAnimation(.easeInOut(duration: 1.25).repeatForever(autoreverses: true)) {
-                pulse = true
-            }
             wave = true
-        }
-    }
-
-    private func waveOpacity(for index: Int) -> Double {
-        switch index {
-        case 0: return 0.95
-        case 1: return 0.65
-        default: return 0.4
         }
     }
 }
@@ -92,45 +50,42 @@ struct OnPitchLogoMark: View {
 private struct SignalArc: Shape {
     func path(in rect: CGRect) -> Path {
         var path = Path()
-        let center = CGPoint(x: rect.midX - rect.width * 0.12, y: rect.midY)
         let radius = min(rect.width, rect.height) / 2
+        let center = CGPoint(x: rect.midX, y: rect.midY)
         path.addArc(
             center: center,
             radius: radius,
-            startAngle: .degrees(-55),
-            endAngle: .degrees(55),
+            startAngle: .degrees(-50),
+            endAngle: .degrees(50),
             clockwise: false
         )
         return path
     }
 }
 
-/// Horizontal wordmark — stylized **on**Pitch.
+/// Horizontal wordmark — **on**Pitch.
 struct OnPitchWordmark: View {
-    var titleSize: CGFloat = 42
-    var showsTagline: Bool = true
+    var titleSize: CGFloat = 34
+    var showsTagline: Bool = false
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 0) {
-                Text("on")
-                    .font(.system(size: titleSize * 0.78, weight: .semibold, design: .rounded))
-                    .foregroundStyle(OnPitchTheme.live)
-                    .tracking(-0.4)
-                Text("Pitch")
-                    .font(.system(size: titleSize, weight: .bold, design: .rounded))
+                Text(verbatim: "on")
+                    .foregroundStyle(OnPitchTheme.accent)
+                Text(verbatim: "Pitch")
                     .foregroundStyle(OnPitchTheme.textPrimary)
-                    .tracking(-1.0)
             }
+            .font(.system(size: titleSize, weight: .heavy))
+            .tracking(-titleSize * 0.02)
 
             if showsTagline {
                 Text("Live from the pitch")
-                    .font(.subheadline.weight(.semibold))
+                    .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(OnPitchTheme.textSecondary)
-                    .tracking(0.4)
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("onPitch, Live from the pitch")
+        .accessibilityLabel(String(localized: "onPitch, Live from the pitch"))
     }
 }

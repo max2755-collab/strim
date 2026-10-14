@@ -27,6 +27,9 @@ final class StreamEngine: ObservableObject {
     @Published private(set) var currentPublishFPS: Int = 0
     @Published private(set) var streamHealth: StreamHealth = .idle
     @Published private(set) var thermalState: ProcessInfo.ThermalState = .nominal
+    @Published private(set) var thermalThrottleActive = false
+    /// Weak uplink: temporarily on the 720p / 24 fps rung so the stream stays up.
+    @Published private(set) var isNetworkFallback = false
     @Published private(set) var lastError: String?
     @Published private(set) var statusWarning: String?
     @Published private(set) var permissionDenied = false
@@ -38,6 +41,8 @@ final class StreamEngine: ObservableObject {
 
     /// Called after the capture mixer is (re)created so overlays can reattach.
     var onMixerReady: (() -> Void)?
+    /// Goal moments to cut out of the local recording when it stops.
+    var highlightMomentsProvider: (() -> [HighlightMoment])?
 
     private var mixer = MediaMixer()
     private var publishers: [UUID: RTMPPublisher] = [:]
@@ -53,6 +58,8 @@ final class StreamEngine: ObservableObject {
     private var activeDestinations: [StreamDestination] = []
     private var recorder: StreamRecorder?
     private var thermalObserver: NSObjectProtocol?
+    private var pressureObservations: [NSKeyValueObservation] = []
+    private var capturePressure: AVCaptureDevice.SystemPressureState.Level = .nominal
     private var orientationObserver: NSObjectProtocol?
     private var lifecycleObservers: [NSObjectProtocol] = []
     private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
@@ -68,19 +75,40 @@ final class StreamEngine: ObservableObject {
     private var lastStallReconnectAt: Date?
     private var lastPathReconnectAt: Date?
     private var lastBitrateLadderAt: Date?
+    private var lastHealthToastAt: Date?
     /// Temporary session bitrate cap (kbps) while the uplink is unstable.
     private var sessionBitrateKbps: Int?
-    private var pendingScoreboard: ScoreboardOverlayUpdate?
+    /// Last image per overlay slot (re-applied after a mixer rebuild).
+    private var pendingOverlays: [OverlaySlot: OverlayImage] = [:]
+    /// Scorebug toggled off from the match controls (its image stays pending).
+    private var scoreboardActive = true
 
     @ScreenActor
-    private var scoreboardObject: ImageScreenObject?
+    private var overlayObjects: [OverlaySlot: ImageScreenObject] = [:]
     @ScreenActor
     private var dualPipObject: VideoTrackScreenObject?
 
     private var previewStartTask: Task<Void, Never>?
+    private var previewStopTask: Task<Void, Never>?
     /// Bumped on every preview rebuild / stop so cancelled tasks can't publish stale ready flags.
     private var previewGeneration: UInt64 = 0
     private var reconnectAttempts: [UUID: Int] = [:]
+    /// Guards against a double tap on "Start stream" launching two sessions.
+    private var isStartingStream = false
+    /// Serializes overlay updates so an older frame can never land after a newer one.
+    private var overlayTask: Task<Void, Never>?
+    /// Weak-uplink fallback bookkeeping (see `updateNetworkFallback`).
+    private var poorUplinkSeconds = 0.0
+    private var fallbackHealthySeconds = 0.0
+    private var fallbackRecoverySeconds = StreamEngine.baseFallbackRecoverySeconds
+    private var lastFallbackRecoveryAt: Date?
+    /// A call / Siri took the audio session; restore it when they're done.
+    private var audioInterrupted = false
+
+    private static let fallbackAfterSeconds: TimeInterval = 20
+    private static let fallbackAfterSecondsAboveFloor: TimeInterval = 45
+    private static let baseFallbackRecoverySeconds: TimeInterval = 60
+    private static let maxFallbackRecoverySeconds: TimeInterval = 600
 
     func clearError() {
         // Defer so SwiftUI alert bindings don't publish during view updates.
@@ -106,8 +134,9 @@ final class StreamEngine: ObservableObject {
     }
 
     func startPreview(config: StreamConfig) {
-        let dualWanted = config.dualCameraEnabled && DeviceCapabilities.supportsMultiCam
-        // Already running with same quality — just refresh orientation (no teardown).
+        let dualWanted = wantsDualCamera(config)
+        // Already running with the same capture setup — apply the cheap deltas
+        // (mute, bitrate, orientation) without a teardown.
         if isPreviewRunning,
            config.resolution == currentConfig.resolution,
            config.fps == currentConfig.fps,
@@ -115,11 +144,7 @@ final class StreamEngine: ObservableObject {
            config.useFrontCamera == currentConfig.useFrontCamera,
            dualWanted == isDualCameraEnabled,
            config.centerStageEnabled == currentConfig.centerStageEnabled {
-            currentConfig = config
-            isMuted = config.isMuted
-            applyOrientationLock(config.orientation)
-            CaptureTuning.applyCenterStage(enabled: config.centerStageEnabled)
-            Task { await applyCaptureOrientation() }
+            applyConfig(config)
             return
         }
 
@@ -140,7 +165,10 @@ final class StreamEngine: ObservableObject {
         previewStartTask?.cancel()
         previewGeneration &+= 1
         let generation = previewGeneration
+        let pendingStop = previewStopTask
         previewStartTask = Task {
+            // Never build the new mixer while a previous stop is still tearing down.
+            await pendingStop?.value
             guard await requestPermissions() else { return }
             guard !Task.isCancelled, generation == previewGeneration else { return }
 
@@ -153,23 +181,25 @@ final class StreamEngine: ObservableObject {
             CaptureTuning.applyCenterStage(enabled: config.centerStageEnabled)
 
             // Landscape football stream: always encode 16:9 canvas.
-            let size = currentEncodeSize()
-            encodeSizeLabel = "\(Int(size.width))×\(Int(size.height))"
+            let size = refreshEncodeSize()
 
             let orientation = captureVideoOrientation()
             await mixer.setVideoOrientation(orientation)
             await configureScreen(size: size)
             // Offscreen required for dual PiP / scorebug burn-in.
-            if dualWanted || pendingScoreboard != nil {
+            if dualWanted || !visibleOverlays.isEmpty {
                 await enableOffscreenMixing()
             } else {
                 await disableOffscreenMixing()
             }
 
-            try? await mixer.setFrameRate(config.fps.frameRate)
+            let throttle = DevicePerformance.thermalThrottle(config: config, thermal: thermalState)
+            thermalThrottleActive = throttle.isActive
+            try? await mixer.setFrameRate(throttle.fps.frameRate)
             // MultiCam prefers input-priority formats over session presets.
             if !dualWanted {
-                await mixer.setSessionPreset(DevicePerformance.sessionPreset(for: config.resolution))
+                let captureRes = throttle.capCaptureTo720 ? StreamResolution.p720 : throttle.encodeResolution
+                await mixer.setSessionPreset(DevicePerformance.sessionPreset(for: captureRes))
             }
 
             await attachCameras(
@@ -206,67 +236,117 @@ final class StreamEngine: ObservableObject {
                 await applyDualPip(visible: true, mainIsFront: config.useFrontCamera)
             }
 
-            if let pendingScoreboard {
-                await applyScoreboardOverlay(pendingScoreboard)
-            }
+            await reapplyOverlays()
             onMixerReady?()
         }
     }
 
-    // MARK: - Scoreboard (burned into stream)
+    // MARK: - Overlays (burned into stream)
 
-    func setScoreboardOverlay(_ update: ScoreboardOverlayUpdate?) {
-        pendingScoreboard = update
-        Task {
-            guard isMixerReady else { return }
-            if update != nil {
-                await enableOffscreenMixing()
-            }
-            await applyScoreboardOverlay(update)
+    /// Put an image over the camera in `slot` (nil removes it). Updates apply strictly in
+    /// call order — goal stings push ~30 frames/s and an old frame must never win.
+    func setOverlay(_ overlay: OverlayImage?, slot: OverlaySlot) {
+        pendingOverlays[slot] = overlay
+        enqueueOverlayWork { [weak self] in
+            await self?.refreshOverlay(slot)
         }
     }
 
-    /// Toggle expensive offscreen compositing with the scorebug.
+    /// Show / hide the scorebug without forgetting its last image.
     func setScoreboardActive(_ active: Bool) {
-        Task {
-            guard isMixerReady else { return }
-            if active {
-                await enableOffscreenMixing()
-                if let pendingScoreboard {
-                    await applyScoreboardOverlay(pendingScoreboard)
-                }
-            } else {
-                await applyScoreboardOverlay(nil)
-                // Dual PiP also needs offscreen — don't drop it just because scorebug hid.
-                if !isDualCameraEnabled {
-                    await disableOffscreenMixing()
-                }
+        scoreboardActive = active
+        enqueueOverlayWork { [weak self] in
+            await self?.refreshOverlay(.scoreboard)
+        }
+    }
+
+    private var visibleOverlays: [OverlaySlot: OverlayImage] {
+        scoreboardActive ? pendingOverlays : pendingOverlays.filter { $0.key != .scoreboard }
+    }
+
+    /// Dual PiP and any overlay need offscreen compositing; plain camera doesn't.
+    private var needsOffscreenMixing: Bool {
+        isDualCameraEnabled || !visibleOverlays.isEmpty
+    }
+
+    private func enqueueOverlayWork(_ work: @escaping @MainActor () async -> Void) {
+        let previous = overlayTask
+        overlayTask = Task { @MainActor in
+            await previous?.value
+            await work()
+        }
+    }
+
+    private func refreshOverlay(_ slot: OverlaySlot) async {
+        guard isMixerReady else { return }
+        let overlay = visibleOverlays[slot]
+        if overlay != nil {
+            await enableOffscreenMixing()
+        }
+        await applyOverlay(overlay, slot: slot)
+        if overlay == nil, !needsOffscreenMixing {
+            await disableOffscreenMixing()
+        }
+    }
+
+    /// After a mixer rebuild: every visible overlay, bottom to top.
+    private func reapplyOverlays() async {
+        let visible = visibleOverlays
+        for slot in OverlaySlot.allCases.sorted() {
+            if let overlay = visible[slot] {
+                await applyOverlay(overlay, slot: slot)
             }
         }
+    }
+
+    /// Dual camera only when asked for, supported, and the phone isn't too hot.
+    private func wantsDualCamera(_ config: StreamConfig) -> Bool {
+        config.dualCameraEnabled
+            && DeviceCapabilities.supportsMultiCam
+            && !DevicePerformance.thermalThrottle(
+                config: config,
+                thermal: ProcessInfo.processInfo.thermalState,
+                pressure: capturePressure
+            ).disableDualCamera
     }
 
     func stopPreview() {
-        Task {
-            previewStartTask?.cancel()
-            previewStartTask = nil
-            previewGeneration &+= 1
+        previewStartTask?.cancel()
+        previewStartTask = nil
+        previewGeneration &+= 1
+        let generation = previewGeneration
+        // Flip synchronously so a quick re-open takes the full start path
+        // instead of the "already running" shortcut onto a dying mixer.
+        isPreviewRunning = false
+        let previousStop = previewStopTask
+        previewStopTask = Task {
+            await previousStop?.value
             if isStreaming {
                 await stopStreaming()
             }
-            await tearDownMixer(keepPreviewOutput: false)
-            isPreviewRunning = false
+            await tearDownMixer(keepPreviewOutput: true)
+            // The camera was re-opened while we tore down — leave the new session alone.
+            guard generation == previewGeneration else { return }
+            previewView = nil
             isDualCameraEnabled = false
             networkMonitor.stop()
             stopThermalMonitoring()
             stopOrientationMonitoring()
             stopLifecycleMonitoring()
             endBackgroundStreamingTask()
-            OrientationHelper.unlockAll()
+            // Orientation is owned by the screen underneath (prep locks itself on dismiss).
         }
     }
 
     func applyConfig(_ config: StreamConfig) {
-        let dualWanted = config.dualCameraEnabled && DeviceCapabilities.supportsMultiCam
+        // Camera closed: just remember the settings — the next startPreview uses them.
+        // (Touching the mixer here used to power up the camera from the home screen.)
+        guard isPreviewRunning else {
+            currentConfig = config
+            isMuted = config.isMuted
+            return
+        }
+        let dualWanted = wantsDualCamera(config)
         let cameraChanged = config.useFrontCamera != currentConfig.useFrontCamera
         let dualChanged = dualWanted != isDualCameraEnabled
         let centerChanged = config.centerStageEnabled != currentConfig.centerStageEnabled
@@ -279,7 +359,7 @@ final class StreamEngine: ObservableObject {
 
         if dualChanged {
             if isStreaming {
-                statusWarning = "Останови эфир, чтобы переключить dual camera"
+                statusWarning = String(localized: "Stop the stream to toggle dual camera")
                 return
             }
             // Multi ↔ single session requires a full mixer rebuild.
@@ -305,9 +385,7 @@ final class StreamEngine: ObservableObject {
 
         if qualityChanged {
             Task {
-                try? await mixer.setFrameRate(config.fps.frameRate)
-                await applyCaptureOrientation()
-                try? await applyVideoSettings(to: Array(attachedStreams.values))
+                await applyThermalPolicy()
             }
         } else {
             Task {
@@ -321,12 +399,12 @@ final class StreamEngine: ObservableObject {
             isDualCameraEnabled = false
             currentConfig.dualCameraEnabled = false
             if enabled {
-                statusWarning = "Это устройство не поддерживает dual camera"
+                statusWarning = String(localized: "This device does not support dual camera")
             }
             return
         }
         if isStreaming {
-            statusWarning = "Останови эфир, чтобы переключить dual camera"
+            statusWarning = String(localized: "Stop the stream to toggle dual camera")
             return
         }
         var config = currentConfig
@@ -345,40 +423,50 @@ final class StreamEngine: ObservableObject {
     // MARK: - Streaming
 
     func startStreaming(destinations: [StreamDestination], config: StreamConfig) async {
+        guard !isStreaming, !isStartingStream else { return }
+        isStartingStream = true
+        defer { isStartingStream = false }
         lastError = nil
         statusWarning = nil
         currentConfig = config
         applyOrientationLock(config.orientation)
 
         let enabled = destinations.filter(\.isEnabled)
+        // Forget statuses from the previous session so stale errors don't skew health.
+        destinationStatuses = [:]
         guard !enabled.isEmpty else {
-            lastError = "Enable at least one destination"
+            lastError = String(localized: "Enable at least one destination")
             return
         }
         guard enabled.count <= StreamConfig.maxActiveDestinations else {
-            lastError = "Maximum \(StreamConfig.maxActiveDestinations) active destinations"
+            lastError = String(localized: "Maximum \(StreamConfig.maxActiveDestinations) active destinations")
             return
         }
 
         if !DeviceCapabilities.supports(resolution: config.resolution, fps: config.fps, front: config.useFrontCamera) {
-            statusWarning = "This device may not fully support \(config.resolution.displayName) @ \(config.fps.displayName)."
+            statusWarning = String(localized: "This device may not fully support \(config.resolution.displayName) @ \(config.fps.displayName).")
         } else if config.resolution.requiresStrongUplink && enabled.count > 1 {
-            statusWarning = "\(config.resolution.displayName) multi-stream needs a very strong uplink."
+            statusWarning = String(localized: "\(config.resolution.displayName) multi-stream needs a very strong uplink.")
         }
 
         for destination in enabled {
             guard destination.makeIngestURL() != nil else {
-                lastError = "Invalid URL or stream key for \(destination.name)"
+                lastError = String(localized: "Invalid URL or stream key for \(destination.name)")
                 destinationStatuses[destination.id] = .error("Invalid URL/key")
                 return
             }
         }
 
         if !isPreviewRunning || !isMixerReady {
-            startPreview(config: config)
+            // A preview start already in flight (e.g. camera just opened): wait for it
+            // instead of tearing it down and starting over.
+            let startInFlight = previewStartTask != nil && !isPreviewRunning
+            if !startInFlight {
+                startPreview(config: config)
+            }
             let ready = await waitForPreviewReady(timeoutSeconds: 8)
             guard ready else {
-                lastError = "Camera preview is not ready. Open Live tab and try again."
+                lastError = String(localized: "Camera preview is not ready. Open Live tab and try again.")
                 return
             }
         } else {
@@ -386,17 +474,14 @@ final class StreamEngine: ObservableObject {
         }
 
         guard isPreviewRunning, isMixerReady else {
-            lastError = "Camera preview is not ready. Open Live tab and try again."
+            lastError = String(localized: "Camera preview is not ready. Open Live tab and try again.")
             return
         }
 
-        // Never auto-downgrade quality — only recommend when the phone is hot.
-        if let tip = DevicePerformance.thermalRecommendation(config: config, thermal: thermalState) {
-            statusWarning = tip
-        }
+        await applyThermalPolicy()
 
-        // Dual PiP and scorebug both need offscreen compositing.
-        if pendingScoreboard != nil || isDualCameraEnabled {
+        // Dual PiP and overlays need offscreen compositing.
+        if needsOffscreenMixing {
             await enableOffscreenMixing()
         } else {
             await disableOffscreenMixing()
@@ -413,6 +498,8 @@ final class StreamEngine: ObservableObject {
         streamStartedAt = started
         streamDuration = 0
         currentVideoBitrateKbps = config.videoBitrateKbps
+        // If the app dies on air, the next launch offers to resume.
+        LiveSessionMarker(startedAt: started, destinationIDs: enabled.map(\.id)).save()
         configureAudioSession()
         startDurationTimer()
         UIApplication.shared.isIdleTimerDisabled = true
@@ -427,6 +514,7 @@ final class StreamEngine: ObservableObject {
     }
 
     func stopStreaming() async {
+        LiveSessionMarker.clear()
         await stopRecordingIfNeeded(save: true)
 
         // Cancel reconnects first so sleeping tasks can't restart after stop.
@@ -460,6 +548,18 @@ final class StreamEngine: ObservableObject {
         healthyBitrateSeconds = 0
         lastHealthTickAt = nil
         lastStallReconnectAt = nil
+        lastPathReconnectAt = nil
+        lastBitrateLadderAt = nil
+        let wasFallback = isNetworkFallback
+        isNetworkFallback = false
+        poorUplinkSeconds = 0
+        fallbackHealthySeconds = 0
+        fallbackRecoverySeconds = Self.baseFallbackRecoverySeconds
+        lastFallbackRecoveryAt = nil
+        if wasFallback {
+            // Preview back to the full capture profile.
+            Task { await applyThermalPolicy() }
+        }
         streamHealth = .idle
         UIApplication.shared.isIdleTimerDisabled = false
 
@@ -505,13 +605,13 @@ final class StreamEngine: ObservableObject {
     private func startRecording() async {
         guard recorder == nil else { return }
         guard isPreviewRunning, isMixerReady else {
-            lastError = "Открой Live и дождись превью камеры перед записью"
+            lastError = String(localized: "Open Live and wait for camera preview before recording")
             return
         }
 
         let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
         guard status == .authorized || status == .limited else {
-            lastError = "Photo Library access is required to save recordings"
+            lastError = String(localized: "Photo Library access is required to save recordings")
             return
         }
 
@@ -524,12 +624,13 @@ final class StreamEngine: ObservableObject {
             recordingStartedAt = Date()
         } catch {
             await mixer.removeOutput(recorder)
-            lastError = "Recording failed: \(error.localizedDescription)"
+            lastError = String(localized: "Recording failed: \(error.localizedDescription)")
         }
     }
 
     private func stopRecordingIfNeeded(save: Bool) async {
         guard let recorder else { return }
+        let startedAt = recordingStartedAt
         isRecording = false
         recordingStartedAt = nil
         do {
@@ -540,8 +641,24 @@ final class StreamEngine: ObservableObject {
                     request.addResource(with: .video, fileURL: fileURL, options: nil)
                 }
             }
+            let moments = save ? (highlightMomentsProvider?() ?? []) : []
+            if let startedAt, !moments.isEmpty {
+                // Goal clips are cut from the same file afterwards; the full recording is
+                // already safe in Photos, so the stop button doesn't wait for this.
+                Task { [weak self] in
+                    let saved = await GoalClipExporter.export(moments: moments, from: fileURL, recordingStart: startedAt)
+                    try? FileManager.default.removeItem(at: fileURL)
+                    if saved > 0 {
+                        self?.postToast(String(localized: "Saved \(saved) goal clips to Photos"), force: true)
+                    }
+                }
+            } else {
+                // The copy is in Photos now (or wasn't wanted) — don't let match-length
+                // files pile up in the app container.
+                try? FileManager.default.removeItem(at: fileURL)
+            }
         } catch {
-            lastError = "Could not save recording: \(error.localizedDescription)"
+            lastError = String(localized: "Could not save recording: \(error.localizedDescription)")
         }
         await mixer.removeOutput(recorder)
         self.recorder = nil
@@ -575,28 +692,15 @@ final class StreamEngine: ObservableObject {
                 return
             }
 
-            let position: AVCaptureDevice.Position = toFront ? .front : .back
-            let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position)
+            let throttle = currentThermalThrottle()
             if toFront {
-                if let camera { CaptureTuning.preferCenterStageFormat(on: camera) }
-                CaptureTuning.applyCenterStage(enabled: currentConfig.centerStageEnabled)
+                CaptureTuning.applyCenterStage(enabled: currentConfig.centerStageEnabled && !throttle.disableCenterStage)
             }
-            let stab = CaptureTuning.preferredStabilizationMode(for: camera)
-            try? await mixer.attachVideo(camera) { unit in
-                unit.isVideoMirrored = toFront
-                unit.videoOrientation = orientation
-                unit.preferredVideoStabilizationMode = stab
-            }
-            await mixer.setVideoOrientation(orientation)
-            try? await mixer.configuration(video: 0) { unit in
-                unit.videoOrientation = orientation
-                unit.isVideoMirrored = toFront
-                unit.preferredVideoStabilizationMode = stab
-            }
+            await attachSingleCamera(front: toFront, orientation: orientation, throttle: throttle)
             await mixer.configuration { session in
                 CaptureTuning.applySessionTuning(session)
             }
-            try? await mixer.setFrameRate(currentConfig.fps.frameRate)
+            try? await mixer.setFrameRate(throttle.fps.frameRate)
         }
     }
 
@@ -618,6 +722,11 @@ final class StreamEngine: ObservableObject {
     private func startPublisher(for destination: StreamDestination) async {
         guard let url = destination.makeIngestURL() else { return }
 
+        // Two attempts for one destination must never both stay connected
+        // (that would push a duplicate stream to the ingest).
+        if publishers[destination.id] != nil {
+            await stopPublisher(id: destination.id, cancelReconnect: false)
+        }
         destinationStatuses[destination.id] = .connecting
         let publisher = RTMPPublisher(destinationID: destination.id)
         publishers[destination.id] = publisher
@@ -625,44 +734,43 @@ final class StreamEngine: ObservableObject {
         do {
             let stream = try await publisher.prepare(url: url) { [weak self] status in
                 Task { @MainActor in
-                    self?.destinationStatuses[destination.id] = status
-                    if case .live = status {
-                        self?.armLiveReset(for: destination.id)
+                    // Ignore late callbacks from a publisher we've already replaced.
+                    guard let self, self.publishers[destination.id] === publisher else { return }
+                    self.destinationStatuses[destination.id] = status
+                    if status.isLive {
+                        self.armLiveReset(for: destination.id)
                     }
-                    self?.recomputeStreamHealth()
+                    self.recomputeStreamHealth()
                 }
             }
 
-            if pendingScoreboard != nil {
+            if needsOffscreenMixing {
                 await enableOffscreenMixing()
             }
             await applyCaptureOrientation()
-            try await applyVideoSettings(to: [stream], throwOnFailure: true)
+            try await applyVideoSettings(to: [(destination.id, stream)], throwOnFailure: true)
 
-            let maxBitrate = effectiveVideoBitrateKbps() * 1000
-            let strategy = AdaptiveBitRateStrategy(
-                maximumVideoBitrate: maxBitrate,
-                // Prefer staying live over peak quality when the uplink wobbles.
-                enableAdaptive: currentConfig.adaptiveBitrate
-            ) { [weak self] report, insufficientBW in
-                Task { @MainActor in
-                    self?.ingestNetworkReport(report, insufficientBW: insufficientBW)
-                }
-            } onBitrateChanged: { [weak self] kbps in
-                Task { @MainActor in
-                    guard let self, kbps > 0 else { return }
-                    self.currentVideoBitrateKbps = kbps
-                }
-            }
-            await stream.setBitRateStrategy(strategy)
+            await stream.setBitRateStrategy(makeBitRateStrategy())
 
             await mixer.addOutput(stream)
             attachedStreams[destination.id] = stream
 
             try await publisher.connect { [weak self] in
                 Task { @MainActor in
-                    self?.handleDisconnect(destinationID: destination.id)
+                    self?.handleDisconnect(destinationID: destination.id, publisher: publisher)
                 }
+            }
+
+            // Stop pressed, or a newer attempt took over, while we were connecting —
+            // don't leave a stray output behind.
+            guard isStreaming, publishers[destination.id] === publisher else {
+                if publishers[destination.id] === publisher {
+                    await stopPublisher(id: destination.id)
+                } else {
+                    await mixer.removeOutput(stream)
+                    await publisher.close()
+                }
+                return
             }
 
             zeroByteSeconds = 0
@@ -675,15 +783,26 @@ final class StreamEngine: ObservableObject {
                 await setPaused(true)
             }
         } catch {
+            guard publishers[destination.id] === publisher else {
+                await publisher.close() // superseded attempt — leave the newer one alone
+                return
+            }
             destinationStatuses[destination.id] = .error(error.localizedDescription)
-            lastError = "\(destination.name): \(error.localizedDescription)"
+            // Alert once; further failures during the retry loop only toast,
+            // so a modal doesn't pop up every few seconds mid-match.
+            if (reconnectAttempts[destination.id] ?? 0) == 0 {
+                lastError = String(localized: "\(destination.name): \(error.localizedDescription)")
+            }
             await stopPublisher(id: destination.id, cancelReconnect: false)
             scheduleReconnect(for: destination, reason: "connect failed")
         }
     }
 
-    private func handleDisconnect(destinationID: UUID) {
+    private func handleDisconnect(destinationID: UUID, publisher: RTMPPublisher) {
         guard isStreaming else { return }
+        // Our own close() during a reconnect also fires this — only react for the live
+        // publisher, and never stack a second retry on one already pending.
+        guard publishers[destinationID] === publisher, reconnectTasks[destinationID] == nil else { return }
         guard let destination = activeDestinations.first(where: { $0.id == destinationID }) else { return }
         scheduleReconnect(for: destination, reason: "disconnected")
     }
@@ -693,11 +812,10 @@ final class StreamEngine: ObservableObject {
 
         let attempt = (reconnectAttempts[destination.id] ?? 0) + 1
         reconnectAttempts[destination.id] = attempt
-        // Cap delay so we keep trying without hammering the ingest.
-        let delay = min(20.0, 1.0 * pow(1.55, Double(min(attempt, 12) - 1)))
+        let delay = ReconnectBackoff.delaySeconds(attempt: attempt)
 
         destinationStatuses[destination.id] = .reconnecting
-        statusWarning = "\(destination.name): reconnect #\(attempt) (\(reason))"
+        postToast(String(localized: "\(destination.name): reconnect #\(attempt)"), force: attempt == 1)
 
         reconnectTasks[destination.id]?.cancel()
         reconnectTasks[destination.id] = Task { [weak self] in
@@ -708,13 +826,15 @@ final class StreamEngine: ObservableObject {
             // Wait for network in-place — never call scheduleReconnect from here
             // (that would cancel this same task).
             while self.networkMonitor.pathKind == .offline {
-                self.statusWarning = "\(destination.name): waiting for network…"
+                self.postToast(String(localized: "\(destination.name): waiting for network…"))
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
                 guard !Task.isCancelled, self.isStreaming else { return }
             }
 
+            // From here the retry is "in flight": a failure may schedule the next one.
+            self.reconnectTasks[destination.id] = nil
             await self.stopPublisher(id: destination.id, cancelReconnect: false)
-            guard !Task.isCancelled, self.isStreaming else { return }
+            guard self.isStreaming else { return }
             await self.startPublisher(for: destination)
         }
     }
@@ -734,8 +854,12 @@ final class StreamEngine: ObservableObject {
         if let last = lastPathReconnectAt, now.timeIntervalSince(last) < 3 {
             return
         }
+        let alreadyReconnecting = activeStatuses.contains(where: \.isReconnecting)
+        if alreadyReconnecting, reason == "stalled uplink" {
+            return
+        }
         lastPathReconnectAt = now
-        statusWarning = "Network changed — reconnecting (\(reason))"
+        postToast(String(localized: "Reconnecting…"), force: true)
         for destination in activeDestinations {
             scheduleReconnect(for: destination, reason: reason)
         }
@@ -777,31 +901,72 @@ final class StreamEngine: ObservableObject {
         }
     }
 
+    /// Heat limits only (drives the HOT chip).
+    private func thermalOnlyThrottle() -> DevicePerformance.ThermalThrottle {
+        DevicePerformance.thermalThrottle(
+            config: currentConfig,
+            thermal: thermalState,
+            pressure: capturePressure
+        )
+    }
+
+    /// Everything that currently limits capture/encode: heat, plus the weak-uplink rung.
+    private func currentThermalThrottle() -> DevicePerformance.ThermalThrottle {
+        let throttle = thermalOnlyThrottle()
+        return isNetworkFallback ? throttle.cappedForWeakUplink() : throttle
+    }
+
+    /// Lock a fresh device handle after attach — never reuse the instance sent to HaishinKit.
+    private func applyCoolCaptureIfNeeded(
+        position: AVCaptureDevice.Position,
+        throttle: DevicePerformance.ThermalThrottle
+    ) {
+        guard let device = AVCaptureDevice.wideAngle(position) else {
+            return
+        }
+        CaptureTuning.preferCoolCaptureFormat(
+            on: device,
+            maxHeight: throttle.capCaptureTo720 ? 720 : Int(thermalOnlyThrottle().encodeResolution.videoSize.height),
+            fps: throttle.fps.frameRate
+        )
+    }
+
     private func effectiveVideoBitrateKbps() -> Int {
-        sessionBitrateKbps ?? currentConfig.videoBitrateKbps
+        let configured = sessionBitrateKbps ?? currentConfig.videoBitrateKbps
+        return min(configured, currentThermalThrottle().maxBitrateKbps)
+    }
+
+    private var attachedStreamList: [(id: UUID, stream: any StreamConvertible)] {
+        attachedStreams.map { (id: $0.key, stream: $0.value) }
     }
 
     private func applyVideoSettings(
-        to streams: [any StreamConvertible],
+        to streams: [(id: UUID, stream: any StreamConvertible)],
         throwOnFailure: Bool = false
     ) async throws {
-        let size = currentEncodeSize()
-        encodeSizeLabel = "\(Int(size.width))×\(Int(size.height))"
+        let size = refreshEncodeSize()
         let bitRate = effectiveVideoBitrateKbps() * 1000
-        let fps = currentConfig.fps.frameRate
+        let fps = currentThermalThrottle().fps.frameRate
         let audioBitRate = currentConfig.audioBitrateKbps * 1000
         currentVideoBitrateKbps = effectiveVideoBitrateKbps()
 
         await configureScreen(size: size)
 
-        for stream in streams {
+        for (id, stream) in streams {
+            let hevc = activeDestinations.first(where: { $0.id == id })?.useHEVC ?? false
             var video = await stream.videoSettings
             video.videoSize = size
             video.bitRate = bitRate
             video.expectedFrameRate = fps
-            // Default HaishinKit profile is Baseline 3.1 — max 720p.
-            // 1080p/4K need a higher level or the encoder silently produces no video.
-            video.profileLevel = h264ProfileLevel(for: size, fps: fps)
+            if hevc {
+                // Enhanced RTMP H.265 (YouTube): same picture for less uplink.
+                // HaishinKit switches the codec from the profile string.
+                video.profileLevel = kVTProfileLevel_HEVC_Main_AutoLevel as String
+            } else {
+                // Default HaishinKit profile is Baseline 3.1 — max 720p.
+                // 1080p/4K need a higher level or the encoder silently produces no video.
+                video.profileLevel = h264ProfileLevel(for: size, fps: fps)
+            }
             do {
                 try await stream.setVideoSettings(video)
             } catch {
@@ -829,7 +994,17 @@ final class StreamEngine: ObservableObject {
 
     private func currentEncodeSize() -> CGSize {
         // Football streaming is landscape-first; never fall back to portrait by accident.
-        currentConfig.encodeSize(isLandscape: interfaceIsLandscape())
+        var config = currentConfig
+        config.resolution = currentThermalThrottle().encodeResolution
+        return config.encodeSize(isLandscape: interfaceIsLandscape())
+    }
+
+    /// Current encode size; also refreshes the label shown in diagnostics.
+    @discardableResult
+    private func refreshEncodeSize() -> CGSize {
+        let size = currentEncodeSize()
+        encodeSizeLabel = "\(Int(size.width))×\(Int(size.height))"
+        return size
     }
 
     private func interfaceIsLandscape() -> Bool {
@@ -884,9 +1059,7 @@ final class StreamEngine: ObservableObject {
                 unit.videoOrientation = orientation
             }
         }
-        let size = currentEncodeSize()
-        encodeSizeLabel = "\(Int(size.width))×\(Int(size.height))"
-        await configureScreen(size: size)
+        await configureScreen(size: refreshEncodeSize())
         if isDualCameraEnabled {
             await applyDualPip(visible: true, mainIsFront: usingFrontCamera)
         }
@@ -897,67 +1070,85 @@ final class StreamEngine: ObservableObject {
         preferFrontMain: Bool,
         orientation: AVCaptureVideoOrientation
     ) async {
-        let back = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
-        let front = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
-        if let front {
-            CaptureTuning.preferCenterStageFormat(on: front)
-        }
-        CaptureTuning.applyCenterStage(enabled: currentConfig.centerStageEnabled)
+        let back = AVCaptureDevice.wideAngle(.back)
+        let front = AVCaptureDevice.wideAngle(.front)
+        let throttle = currentThermalThrottle()
+        CaptureTuning.applyCenterStage(enabled: currentConfig.centerStageEnabled && !throttle.disableCenterStage)
+        let stab = CaptureTuning.preferredStabilizationMode(
+            allowStabilization: !throttle.disableStabilization
+        )
 
         if dual {
-            let backStab = CaptureTuning.preferredStabilizationMode(for: back)
-            let frontStab = CaptureTuning.preferredStabilizationMode(for: front)
             try? await mixer.attachVideo(back, track: 0) { unit in
                 unit.isVideoMirrored = false
                 unit.videoOrientation = orientation
-                unit.preferredVideoStabilizationMode = backStab
+                unit.preferredVideoStabilizationMode = stab
             }
             try? await mixer.attachVideo(front, track: 1) { unit in
                 unit.isVideoMirrored = true
                 unit.videoOrientation = orientation
-                unit.preferredVideoStabilizationMode = frontStab
+                unit.preferredVideoStabilizationMode = stab
             }
             var mixerSettings = await mixer.videoMixerSettings
             mixerSettings.mainTrack = preferFrontMain ? 1 : 0
             await mixer.setVideoMixerSettings(mixerSettings)
             await mixer.setVideoOrientation(orientation)
+            if !throttle.disableCenterStage,
+               let front = AVCaptureDevice.wideAngle(.front) {
+                CaptureTuning.preferCenterStageFormat(on: front)
+            }
+            startPressureMonitoring(dual: true)
             return
         }
 
-        let camera = preferFrontMain ? front : back
-        let stab = CaptureTuning.preferredStabilizationMode(for: camera)
-        try? await mixer.attachVideo(camera, track: 0) { unit in
-            unit.isVideoMirrored = preferFrontMain
+        await attachSingleCamera(front: preferFrontMain, orientation: orientation, throttle: throttle)
+    }
+
+    /// One camera on track 0: attach, orient, pick a cool format, watch its pressure.
+    /// Shared by preview start, camera flip and the Center Stage toggle.
+    private func attachSingleCamera(
+        front: Bool,
+        orientation: AVCaptureVideoOrientation,
+        throttle: DevicePerformance.ThermalThrottle
+    ) async {
+        let position: AVCaptureDevice.Position = front ? .front : .back
+        let stab = CaptureTuning.preferredStabilizationMode(
+            allowStabilization: !throttle.disableStabilization
+        )
+        try? await mixer.attachVideo(AVCaptureDevice.wideAngle(position), track: 0) { unit in
+            unit.isVideoMirrored = front
             unit.videoOrientation = orientation
             unit.preferredVideoStabilizationMode = stab
         }
         await mixer.setVideoOrientation(orientation)
+        // Re-apply on the live unit: some properties only stick once the device is running.
         try? await mixer.configuration(video: 0) { unit in
             unit.videoOrientation = orientation
-            unit.isVideoMirrored = preferFrontMain
+            unit.isVideoMirrored = front
             unit.preferredVideoStabilizationMode = stab
         }
+        applyCoolCaptureIfNeeded(position: position, throttle: throttle)
+        if front, !throttle.disableCenterStage, let device = AVCaptureDevice.wideAngle(.front) {
+            CaptureTuning.preferCenterStageFormat(on: device)
+        }
+        // The observed device changed — follow it.
+        startPressureMonitoring(dual: false, front: front)
     }
 
     private func reapplyFrontCenterStage() async {
         CaptureTuning.applyCenterStage(enabled: currentConfig.centerStageEnabled)
         if isDualCameraEnabled {
-            if let front = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front) {
+            if let front = AVCaptureDevice.wideAngle(.front) {
                 CaptureTuning.preferCenterStageFormat(on: front)
             }
             return
         }
-        guard usingFrontCamera,
-              let front = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
-        else { return }
-        CaptureTuning.preferCenterStageFormat(on: front)
-        let orientation = captureVideoOrientation()
-        let stab = CaptureTuning.preferredStabilizationMode(for: front)
-        try? await mixer.attachVideo(front, track: 0) { unit in
-            unit.isVideoMirrored = true
-            unit.videoOrientation = orientation
-            unit.preferredVideoStabilizationMode = stab
-        }
+        guard usingFrontCamera else { return }
+        await attachSingleCamera(
+            front: true,
+            orientation: captureVideoOrientation(),
+            throttle: currentThermalThrottle()
+        )
     }
 
     @ScreenActor
@@ -1019,37 +1210,43 @@ final class StreamEngine: ObservableObject {
 
     @ScreenActor
     private func clearScreenObjectHandles() {
-        scoreboardObject = nil
+        overlayObjects = [:]
         dualPipObject = nil
     }
 
     @ScreenActor
-    private func applyScoreboardOverlay(_ update: ScoreboardOverlayUpdate?) async {
-        if let update {
-            let object: ImageScreenObject
-            if let existing = scoreboardObject {
-                object = existing
-            } else {
-                object = ImageScreenObject()
-                scoreboardObject = object
-                try? await mixer.screen.addChild(object)
+    private func applyOverlay(_ overlay: OverlayImage?, slot: OverlaySlot) async {
+        guard let overlay else {
+            if let object = overlayObjects.removeValue(forKey: slot) {
+                await mixer.screen.removeChild(object)
             }
-
-            object.cgImage = update.image
-            object.size = update.size.renderSize
-            object.cornerRadius = 0
-            object.isVisible = true
-            apply(position: update.position, size: update.size, to: object)
-            object.invalidateLayout()
-        } else if let object = scoreboardObject {
-            await mixer.screen.removeChild(object)
-            scoreboardObject = nil
+            return
         }
+        let object: ImageScreenObject
+        if let existing = overlayObjects[slot] {
+            object = existing
+        } else {
+            object = ImageScreenObject()
+            overlayObjects[slot] = object
+            try? await mixer.screen.addChild(object)
+            // Keep z-order: anything that belongs above this slot goes back on top.
+            for upper in OverlaySlot.allCases where upper > slot {
+                if let above = overlayObjects[upper] {
+                    await mixer.screen.removeChild(above)
+                    try? await mixer.screen.addChild(above)
+                }
+            }
+        }
+        object.cgImage = overlay.image
+        object.size = overlay.size
+        object.cornerRadius = 0
+        object.isVisible = true
+        apply(position: overlay.position, margin: overlay.margin, to: object)
+        object.invalidateLayout()
     }
 
     @ScreenActor
-    private func apply(position: ScoreboardPosition, size: ScoreboardSize, to object: ImageScreenObject) {
-        let margin = size.edgeMargin
+    private func apply(position: ScoreboardPosition, margin: CGFloat, to object: ImageScreenObject) {
         switch position {
         case .topLeft:
             object.horizontalAlignment = .left
@@ -1127,24 +1324,99 @@ final class StreamEngine: ObservableObject {
 
     private func startThermalMonitoring() {
         thermalState = ProcessInfo.processInfo.thermalState
-        thermalObserver = NotificationCenter.default.addObserver(
-            forName: ProcessInfo.thermalStateDidChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                guard let self else { return }
-                self.thermalState = ProcessInfo.processInfo.thermalState
-                guard self.isStreaming else { return }
-                // Advise only — never change encode settings automatically.
-                if let tip = DevicePerformance.thermalRecommendation(
-                    config: self.currentConfig,
-                    thermal: self.thermalState
-                ) {
-                    self.statusWarning = tip
+        if thermalObserver == nil {
+            thermalObserver = NotificationCenter.default.addObserver(
+                forName: ProcessInfo.thermalStateDidChangeNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.thermalState = ProcessInfo.processInfo.thermalState
+                    await self.applyThermalPolicy()
                 }
             }
         }
+        startPressureMonitoring()
+    }
+
+    /// Apple: KVO `systemPressureState` and drop fps / features before the session is interrupted.
+    /// `dual`/`front` override the published flags, which aren't updated yet mid-attach.
+    private func startPressureMonitoring(dual: Bool? = nil, front: Bool? = nil) {
+        pressureObservations.removeAll()
+        let positions: [AVCaptureDevice.Position]
+        if dual ?? isDualCameraEnabled {
+            positions = [.back, .front]
+        } else {
+            positions = [(front ?? usingFrontCamera) ? .front : .back]
+        }
+        for position in positions {
+            guard let device = AVCaptureDevice.wideAngle(position) else { continue }
+            let observation = device.observe(\.systemPressureState, options: [.initial, .new]) { [weak self] device, _ in
+                let level = device.systemPressureState.level
+                Task { @MainActor in
+                    self?.handleSystemPressure(level)
+                }
+            }
+            pressureObservations.append(observation)
+        }
+    }
+
+    private func handleSystemPressure(_ level: AVCaptureDevice.SystemPressureState.Level) {
+        guard capturePressure != level else { return }
+        capturePressure = level
+        Task { await applyThermalPolicy() }
+    }
+
+    /// Apple WWDC21 / HIG: drop fps first, then capture work. Settings stay as the user left them.
+    private func applyThermalPolicy() async {
+        let throttle = currentThermalThrottle()
+        thermalThrottleActive = thermalOnlyThrottle().isActive
+        if let tip = DevicePerformance.thermalRecommendation(
+            config: currentConfig,
+            thermal: thermalState,
+            pressure: capturePressure
+        ) {
+            postToast(tip)
+        }
+
+        if throttle.stopLocalRecord, isRecording {
+            await stopRecordingIfNeeded(save: true)
+        }
+
+        if isDualCameraEnabled, throttle.disableDualCamera, !isStreaming {
+            var config = currentConfig
+            config.dualCameraEnabled = false
+            startPreview(config: config)
+            return
+        }
+
+        guard isMixerReady else { return }
+
+        try? await mixer.setFrameRate(throttle.fps.frameRate)
+        if !isDualCameraEnabled {
+            // Capture size follows heat only; the weak-uplink rung just scales the encode,
+            // so switching it on/off never re-configures the camera mid-stream.
+            let heat = thermalOnlyThrottle()
+            let captureRes = heat.capCaptureTo720 ? StreamResolution.p720 : heat.encodeResolution
+            await mixer.setSessionPreset(DevicePerformance.sessionPreset(for: captureRes))
+        }
+
+        applyCoolCaptureIfNeeded(
+            position: usingFrontCamera ? .front : .back,
+            throttle: throttle
+        )
+        CaptureTuning.applyCenterStage(enabled: currentConfig.centerStageEnabled && !throttle.disableCenterStage)
+
+        let stab = CaptureTuning.preferredStabilizationMode(
+            allowStabilization: !throttle.disableStabilization
+        )
+        try? await mixer.configuration(video: 0) { unit in
+            unit.preferredVideoStabilizationMode = stab
+        }
+
+        await applyCaptureOrientation()
+        try? await applyVideoSettings(to: attachedStreamList)
     }
 
     private func stopThermalMonitoring() {
@@ -1152,6 +1424,8 @@ final class StreamEngine: ObservableObject {
             NotificationCenter.default.removeObserver(thermalObserver)
             self.thermalObserver = nil
         }
+        pressureObservations.removeAll()
+        capturePressure = .nominal
     }
 
     private func startOrientationMonitoring() {
@@ -1166,7 +1440,7 @@ final class StreamEngine: ObservableObject {
                 await self.applyCaptureOrientation()
                 // Encode size only flips in auto mode (portrait ↔ landscape).
                 if self.currentConfig.orientation == .auto {
-                    try? await self.applyVideoSettings(to: Array(self.attachedStreams.values))
+                    try? await self.applyVideoSettings(to: self.attachedStreamList)
                 }
             }
         }
@@ -1192,7 +1466,7 @@ final class StreamEngine: ObservableObject {
         networkMonitor.onSignificantChange = { [weak self] previous, next in
             guard let self, self.isStreaming else { return }
             if next == .offline {
-                self.statusWarning = "Network lost — waiting to reconnect…"
+                self.postToast(String(localized: "Network lost — waiting to reconnect…"), force: true)
                 return
             }
             if previous == .offline || previous != next {
@@ -1229,10 +1503,36 @@ final class StreamEngine: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.configureAudioSession()
+                guard let self else { return }
+                // iOS doesn't always send "interruption ended" (e.g. a declined call).
+                if self.audioInterrupted {
+                    await self.restoreAudio()
+                } else {
+                    self.configureAudioSession()
+                }
             }
         }
-        lifecycleObservers = [background, foreground, active]
+        let interruption = center.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            let rawType = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+            let began = rawType == AVAudioSession.InterruptionType.began.rawValue
+            Task { @MainActor in
+                await self?.handleAudioInterruption(began: began)
+            }
+        }
+        let mediaReset = center.addObserver(
+            forName: AVAudioSession.mediaServicesWereResetNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                await self?.restoreAudio()
+            }
+        }
+        lifecycleObservers = [background, foreground, active, interruption, mediaReset]
     }
 
     private func stopLifecycleMonitoring() {
@@ -1248,7 +1548,10 @@ final class StreamEngine: ObservableObject {
         configureAudioSession()
         beginBackgroundStreamingTask()
         // iOS suspends the camera; audio + RTMP keep the process alive via UIBackgroundModes=audio.
-        statusWarning = "Стрим в фоне: звук идёт, камера может замереть до возврата в приложение"
+        postToast(
+            String(localized: "Background stream: audio continues, camera may freeze until you return"),
+            force: true
+        )
     }
 
     private func handleWillEnterForeground() {
@@ -1271,6 +1574,33 @@ final class StreamEngine: ObservableObject {
                     reconnectAllDestinations(reason: "back to foreground")
                 }
             }
+        }
+    }
+
+    // MARK: - Audio interruptions (calls, Siri, alarms)
+
+    private func handleAudioInterruption(began: Bool) async {
+        if began {
+            audioInterrupted = true
+            if isStreaming {
+                postToast(String(localized: "Sound interrupted by a call or Siri — it comes back automatically"), force: true)
+            }
+        } else {
+            await restoreAudio()
+        }
+    }
+
+    /// Re-activate the session and re-attach the mic: after an interruption the old
+    /// input can stay silent even though the picture keeps going.
+    private func restoreAudio() async {
+        let wasInterrupted = audioInterrupted
+        audioInterrupted = false
+        await AudioSessionConfigurator.shared.activate(force: true)
+        guard isMixerReady else { return }
+        try? await mixer.attachAudio(AVCaptureDevice.default(for: .audio))
+        await applyMute(isMuted || isPaused)
+        if wasInterrupted, isStreaming {
+            postToast(String(localized: "Sound is back on air"), force: true)
         }
     }
 
@@ -1383,10 +1713,12 @@ final class StreamEngine: ObservableObject {
             break
         }
 
+        updateNetworkFallback(dt: dt)
+
         // Hard recovery: rebuild RTMP if the pipe is dead for too long.
-        if stalledSeconds >= 8,
+        if stalledSeconds >= 12,
            networkMonitor.pathKind != .offline,
-           lastStallReconnectAt.map({ now.timeIntervalSince($0) > 12 }) ?? true {
+           lastStallReconnectAt.map({ now.timeIntervalSince($0) > 18 }) ?? true {
             lastStallReconnectAt = now
             stalledSeconds = 0
             reconnectAllDestinations(reason: "stalled uplink")
@@ -1404,31 +1736,16 @@ final class StreamEngine: ObservableObject {
             return
         }
 
-        let statuses = Array(destinationStatuses.values)
-        if statuses.contains(where: {
-            if case .reconnecting = $0 { return true }
-            return false
-        }) {
+        let statuses = activeStatuses
+        if statuses.contains(where: \.isReconnecting) {
             applyHealth(.reconnecting)
             return
         }
 
-        let anyLive = statuses.contains(where: {
-            if case .live = $0 { return true }
-            return false
-        })
-        let anyConnecting = statuses.contains(where: {
-            if case .connecting = $0 { return true }
-            return false
-        })
-
-        if !anyLive {
-            if anyConnecting {
+        if !statuses.contains(where: \.isLive) {
+            if statuses.contains(where: \.isConnecting) {
                 applyHealth(.connecting)
-            } else if statuses.contains(where: {
-                if case .error = $0 { return true }
-                return false
-            }) {
+            } else if statuses.contains(where: \.isError) {
                 applyHealth(.stalled)
             } else {
                 applyHealth(.connecting)
@@ -1467,36 +1784,123 @@ final class StreamEngine: ObservableObject {
         applyHealth(.healthy(uploadKBps: kbps, fps: fps))
     }
 
+    /// Statuses of destinations in the current session only.
+    private var activeStatuses: [DestinationStatus] {
+        activeDestinations.compactMap { destinationStatuses[$0.id] }
+    }
+
     private func applyHealth(_ next: StreamHealth) {
         let previous = streamHealth
         streamHealth = next
         guard next != previous, let hint = next.detailHint, next.severity >= 3 else { return }
-        // Surface serious uplink problems once when they appear.
-        if statusWarning == nil || previous.severity < 3 {
-            statusWarning = hint
+        // Toast once when entering a bad state — HUD chip covers the rest.
+        guard previous.severity < 3 else { return }
+        postToast(hint)
+    }
+
+    /// Non-blocking HUD toast (LiveView auto-dismisses). Cooldown avoids spam.
+    private func postToast(_ message: String, force: Bool = false, cooldown: TimeInterval = 15) {
+        let now = Date()
+        if !force, let last = lastHealthToastAt, now.timeIntervalSince(last) < cooldown {
+            return
         }
+        lastHealthToastAt = now
+        statusWarning = message
     }
 
     /// Step down the session bitrate ladder so the stream stays up on a weak channel.
+    /// Bitrate ladder hit the floor and the uplink still can't keep up → drop to
+    /// 720p / 24 fps instead of stalling. Back to full quality after a long healthy run;
+    /// if the network relapses soon after, wait twice as long next time (no flapping).
+    private func updateNetworkFallback(dt: TimeInterval) {
+        guard currentConfig.adaptiveBitrate else { return }
+        let isWeak: Bool
+        switch streamHealth {
+        case .congested, .degraded, .audioOnly: isWeak = true
+        default: isWeak = false
+        }
+
+        if isNetworkFallback {
+            if case .healthy = streamHealth {
+                fallbackHealthySeconds += dt
+            } else {
+                fallbackHealthySeconds = 0
+            }
+            if fallbackHealthySeconds >= fallbackRecoverySeconds {
+                setNetworkFallback(false)
+            }
+            return
+        }
+
+        poorUplinkSeconds = isWeak ? poorUplinkSeconds + dt : max(0, poorUplinkSeconds - dt)
+        let floor = DevicePerformance.adaptiveBitrateFloorKbps(
+            configured: currentConfig.videoBitrateKbps,
+            resolution: currentConfig.resolution
+        )
+        let atFloor = effectiveVideoBitrateKbps() <= floor
+        let limit = atFloor ? Self.fallbackAfterSeconds : Self.fallbackAfterSecondsAboveFloor
+        guard poorUplinkSeconds >= limit else { return }
+
+        // Already at (or below) the fallback rung — nothing lower to switch to.
+        let throttle = currentThermalThrottle()
+        guard throttle.encodeResolution != .p720 || throttle.fps.rawValue > StreamFPS.fps24.rawValue else {
+            poorUplinkSeconds = 0
+            return
+        }
+        setNetworkFallback(true)
+    }
+
+    private func setNetworkFallback(_ on: Bool) {
+        guard isNetworkFallback != on else { return }
+        isNetworkFallback = on
+        poorUplinkSeconds = 0
+        fallbackHealthySeconds = 0
+        if on {
+            // Relapsed shortly after recovering → be slower to trust the network again.
+            if let last = lastFallbackRecoveryAt, Date().timeIntervalSince(last) < 300 {
+                fallbackRecoverySeconds = min(Self.maxFallbackRecoverySeconds, fallbackRecoverySeconds * 2)
+            } else {
+                fallbackRecoverySeconds = Self.baseFallbackRecoverySeconds
+            }
+            sessionBitrateKbps = nil // the fallback rung caps the bitrate itself
+            postToast(String(localized: "Weak network — switched to 720p 24 fps to stay on air"), force: true)
+        } else {
+            lastFallbackRecoveryAt = Date()
+            // Come back at the floor and let the normal ladder climb.
+            sessionBitrateKbps = DevicePerformance.adaptiveBitrateFloorKbps(
+                configured: currentConfig.videoBitrateKbps,
+                resolution: currentConfig.resolution
+            )
+            postToast(String(localized: "Network recovered — restoring quality"), force: true)
+        }
+        Task {
+            await applyThermalPolicy()
+            await refreshBitRateStrategies()
+        }
+    }
+
     private func degradeSessionBitrate(reason: String) async {
-        guard isStreaming, currentConfig.adaptiveBitrate else { return }
+        guard isStreaming, currentConfig.adaptiveBitrate, !isNetworkFallback else { return }
         let now = Date()
-        if let last = lastBitrateLadderAt, now.timeIntervalSince(last) < 6 { return }
+        if let last = lastBitrateLadderAt, now.timeIntervalSince(last) < 12 { return }
         let configured = currentConfig.videoBitrateKbps
         let current = sessionBitrateKbps ?? configured
-        let floor = max(500, configured / 5)
-        let next = max(floor, Int(Double(current) * 0.7))
+        let floor = DevicePerformance.adaptiveBitrateFloorKbps(
+            configured: configured,
+            resolution: currentConfig.resolution
+        )
+        let next = max(floor, Int(Double(current) * 0.85))
         guard next < current else { return }
         lastBitrateLadderAt = now
         sessionBitrateKbps = next
         currentVideoBitrateKbps = next
-        statusWarning = "Стабильность: битрейт \(next) kbps (\(reason))"
-        try? await applyVideoSettings(to: Array(attachedStreams.values))
+        postToast(String(localized: "Bitrate \(current) → \(next) kbps"), force: true, cooldown: 12)
+        try? await applyVideoSettings(to: attachedStreamList)
         await refreshBitRateStrategies()
     }
 
     private func recoverSessionBitrate() async {
-        guard isStreaming, let capped = sessionBitrateKbps else { return }
+        guard isStreaming, !isNetworkFallback, let capped = sessionBitrateKbps else { return }
         let configured = currentConfig.videoBitrateKbps
         let next = min(configured, Int(Double(capped) * 1.25))
         if next >= configured {
@@ -1506,27 +1910,31 @@ final class StreamEngine: ObservableObject {
             sessionBitrateKbps = next
             currentVideoBitrateKbps = next
         }
-        try? await applyVideoSettings(to: Array(attachedStreams.values))
+        try? await applyVideoSettings(to: attachedStreamList)
         await refreshBitRateStrategies()
     }
 
     private func refreshBitRateStrategies() async {
-        let maxBitrate = effectiveVideoBitrateKbps() * 1000
         for stream in attachedStreams.values {
-            let strategy = AdaptiveBitRateStrategy(
-                maximumVideoBitrate: maxBitrate,
-                enableAdaptive: currentConfig.adaptiveBitrate
-            ) { [weak self] report, insufficientBW in
-                Task { @MainActor in
-                    self?.ingestNetworkReport(report, insufficientBW: insufficientBW)
-                }
-            } onBitrateChanged: { [weak self] kbps in
-                Task { @MainActor in
-                    guard let self, kbps > 0 else { return }
-                    self.currentVideoBitrateKbps = kbps
-                }
+            await stream.setBitRateStrategy(makeBitRateStrategy())
+        }
+    }
+
+    /// Adaptive ABR capped at the current effective bitrate; reports feed stream health.
+    private func makeBitRateStrategy() -> AdaptiveBitRateStrategy {
+        AdaptiveBitRateStrategy(
+            maximumVideoBitrate: effectiveVideoBitrateKbps() * 1000,
+            // Prefer staying live over peak quality when the uplink wobbles.
+            enableAdaptive: currentConfig.adaptiveBitrate
+        ) { [weak self] report, insufficientBW in
+            Task { @MainActor in
+                self?.ingestNetworkReport(report, insufficientBW: insufficientBW)
             }
-            await stream.setBitRateStrategy(strategy)
+        } onBitrateChanged: { [weak self] kbps in
+            Task { @MainActor in
+                guard let self, kbps > 0 else { return }
+                self.currentVideoBitrateKbps = kbps
+            }
         }
     }
 }
@@ -1539,5 +1947,36 @@ extension StreamEngine: MTHKViewRepresentable.PreviewSource {
                 await mixer.addOutput(view)
             }
         }
+    }
+}
+
+/// Reconnect delay per attempt: 1 s, growing ×1.55, capped at 20 s so we keep trying
+/// without hammering the ingest.
+enum ReconnectBackoff {
+    static func delaySeconds(attempt: Int) -> Double {
+        min(20.0, pow(1.55, Double(min(max(attempt, 1), 12) - 1)))
+    }
+}
+
+/// Images composited over the camera, listed bottom to top.
+enum OverlaySlot: Int, CaseIterable, Comparable, Sendable {
+    case sponsor
+    case scoreboard
+    case lowerThird
+
+    static func < (lhs: OverlaySlot, rhs: OverlaySlot) -> Bool {
+        lhs.rawValue < rhs.rawValue
+    }
+}
+
+/// One burned-in overlay: pixels plus where they sit on the 16:9 canvas.
+struct OverlayImage: @unchecked Sendable {
+    let image: CGImage
+    let position: ScoreboardPosition
+    let margin: CGFloat
+
+    /// Rendered at scale 1, so pixels == canvas points.
+    var size: CGSize {
+        CGSize(width: image.width, height: image.height)
     }
 }

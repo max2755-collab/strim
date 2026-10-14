@@ -9,6 +9,17 @@ final class NetworkStatusMonitor: ObservableObject {
         case wired = "Wired"
         case other = "Network"
         case offline = "Offline"
+
+        /// User-facing name (HUD chip, pre-flight, diagnostics).
+        var title: String {
+            switch self {
+            case .wifi: return "Wi‑Fi"
+            case .cellular: return String(localized: "Cellular")
+            case .wired: return String(localized: "Wired")
+            case .other: return String(localized: "Network")
+            case .offline: return String(localized: "Offline")
+            }
+        }
     }
 
     @Published private(set) var pathKind: PathKind = .other
@@ -19,7 +30,7 @@ final class NetworkStatusMonitor: ObservableObject {
     var onSignificantChange: ((PathKind, PathKind) -> Void)?
 
     private var monitor: NWPathMonitor?
-    private let queue = DispatchQueue(label: "com.onpitch.network")
+    private let queue = DispatchQueue(label: "ru.ementis.onpitch.network")
     private var hasAppliedOnce = false
 
     func start() {

@@ -13,7 +13,7 @@ enum DestinationPreset: String, CaseIterable, Identifiable, Codable, Sendable {
         case .youtube: return "YouTube"
         case .twitch: return "Twitch"
         case .vk: return "VK Live"
-        case .custom: return "Custom"
+        case .custom: return String(localized: "Custom")
         }
     }
 
@@ -35,9 +35,14 @@ struct StreamDestination: Identifiable, Codable, Equatable, Sendable {
     /// Stream key is stored in Keychain; this field is never persisted to UserDefaults.
     var streamKey: String
     var isEnabled: Bool
-    /// VK Live channel slug, e.g. `Near_You` or full `https://live.vkvideo.ru/Near_You`.
+    /// VK Live channel slug, e.g. `channel38363194`.
     var vkChannelSlug: String
+    /// Twitch channel login, e.g. `shroud`.
+    var twitchChannelLogin: String
     var showChatOverlay: Bool
+    /// H.265 over enhanced RTMP — better picture per bit, but only some ingests accept it
+    /// (YouTube does). Off by default.
+    var useHEVC: Bool
 
     init(
         id: UUID = UUID(),
@@ -47,15 +52,19 @@ struct StreamDestination: Identifiable, Codable, Equatable, Sendable {
         streamKey: String = "",
         isEnabled: Bool = true,
         vkChannelSlug: String = "",
-        showChatOverlay: Bool = true
+        twitchChannelLogin: String = "",
+        showChatOverlay: Bool = true,
+        useHEVC: Bool = false
     ) {
         self.id = id
         self.name = name
         self.preset = preset
         self.url = url
+        self.useHEVC = useHEVC
         self.streamKey = streamKey
         self.isEnabled = isEnabled
         self.vkChannelSlug = vkChannelSlug
+        self.twitchChannelLogin = twitchChannelLogin
         self.showChatOverlay = showChatOverlay
     }
 
@@ -67,7 +76,9 @@ struct StreamDestination: Identifiable, Codable, Equatable, Sendable {
         var url: String
         var isEnabled: Bool
         var vkChannelSlug: String
+        var twitchChannelLogin: String
         var showChatOverlay: Bool
+        var useHEVC: Bool
 
         init(
             id: UUID,
@@ -76,14 +87,18 @@ struct StreamDestination: Identifiable, Codable, Equatable, Sendable {
             url: String,
             isEnabled: Bool,
             vkChannelSlug: String = "",
-            showChatOverlay: Bool = true
+            twitchChannelLogin: String = "",
+            showChatOverlay: Bool = true,
+            useHEVC: Bool = false
         ) {
+            self.useHEVC = useHEVC
             self.id = id
             self.name = name
             self.preset = preset
             self.url = url
             self.isEnabled = isEnabled
             self.vkChannelSlug = vkChannelSlug
+            self.twitchChannelLogin = twitchChannelLogin
             self.showChatOverlay = showChatOverlay
         }
 
@@ -95,7 +110,9 @@ struct StreamDestination: Identifiable, Codable, Equatable, Sendable {
             url = try c.decode(String.self, forKey: .url)
             isEnabled = try c.decode(Bool.self, forKey: .isEnabled)
             vkChannelSlug = try c.decodeIfPresent(String.self, forKey: .vkChannelSlug) ?? ""
+            twitchChannelLogin = try c.decodeIfPresent(String.self, forKey: .twitchChannelLogin) ?? ""
             showChatOverlay = try c.decodeIfPresent(Bool.self, forKey: .showChatOverlay) ?? true
+            useHEVC = try c.decodeIfPresent(Bool.self, forKey: .useHEVC) ?? false
         }
     }
 
@@ -107,7 +124,9 @@ struct StreamDestination: Identifiable, Codable, Equatable, Sendable {
             url: url,
             isEnabled: isEnabled,
             vkChannelSlug: vkChannelSlug,
-            showChatOverlay: showChatOverlay
+            twitchChannelLogin: twitchChannelLogin,
+            showChatOverlay: showChatOverlay,
+            useHEVC: useHEVC
         )
     }
 
@@ -120,8 +139,20 @@ struct StreamDestination: Identifiable, Codable, Equatable, Sendable {
             streamKey: streamKey,
             isEnabled: metadata.isEnabled,
             vkChannelSlug: metadata.vkChannelSlug,
-            showChatOverlay: metadata.showChatOverlay
+            twitchChannelLogin: metadata.twitchChannelLogin,
+            showChatOverlay: metadata.showChatOverlay,
+            useHEVC: metadata.useHEVC
         )
+    }
+
+    /// True when a non-blank stream key is present.
+    var hasStreamKey: Bool {
+        !streamKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// RTMPS ingest (TLS).
+    var isSecure: Bool {
+        url.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix("rtmps://")
     }
 
     func makeIngestURL() -> URL? {
@@ -177,12 +208,12 @@ enum DestinationStatus: Equatable, Sendable {
 
     var label: String {
         switch self {
-        case .idle: return "Idle"
-        case .connecting: return "Connecting"
-        case .live: return "Live"
-        case .reconnecting: return "Reconnecting"
+        case .idle: return String(localized: "Idle")
+        case .connecting: return String(localized: "Connecting")
+        case .live: return String(localized: "Live")
+        case .reconnecting: return String(localized: "Reconnecting")
         case .error(let message): return message
-        case .stopped: return "Stopped"
+        case .stopped: return String(localized: "Stopped")
         }
     }
 
@@ -191,5 +222,14 @@ enum DestinationStatus: Equatable, Sendable {
         case .connecting, .live, .reconnecting: return true
         default: return false
         }
+    }
+
+    var isLive: Bool { self == .live }
+    var isConnecting: Bool { self == .connecting }
+    var isReconnecting: Bool { self == .reconnecting }
+
+    var isError: Bool {
+        if case .error = self { return true }
+        return false
     }
 }

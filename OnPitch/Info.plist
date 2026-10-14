@@ -18,6 +18,17 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>ru.ementis.onpitch.vklive</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>onpitch</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
@@ -28,6 +39,8 @@
 	<string>onPitch needs microphone access to include audio in your live stream.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>onPitch saves local recordings of your live streams to Photos.</string>
+	<key>TwitchClientID</key>
+	<string>YOUR_TWITCH_CLIENT_ID</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>PremierSans.ttf</string>
@@ -45,7 +58,7 @@
 	<dict/>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
-		<string>armv7</string>
+		<string>arm64</string>
 	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
@@ -60,5 +73,11 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>VKLiveClientID</key>
+	<string>anc4ibe4u51r3pqh</string>
+	<key>VKLiveClientSecret</key>
+	<string>YOUR_VK_LIVE_CLIENT_SECRET</string>
+	<key>VKLiveRedirectURI</key>
+	<string>https://ementis.ru/onpitch</string>
 </dict>
 </plist>

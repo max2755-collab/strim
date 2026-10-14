@@ -6,14 +6,33 @@ enum ScoreboardRenderer {
     /// PostScript name from PremierSans.ttf
     private static let boardFontName = "PremierSans"
 
-    private static func boardFont(size: CGFloat) -> UIFont {
+    static func boardFont(size: CGFloat) -> UIFont {
         UIFont(name: boardFontName, size: size)
             ?? UIFont.systemFont(ofSize: size, weight: .bold)
     }
 
+    /// Renders the scorebug in the state's chosen style.
+    @MainActor
+    static func render(
+        _ state: ScoreboardState,
+        animation: GoalAnimation? = nil,
+        crests: TeamCrests = .none
+    ) -> CGImage? {
+        switch state.style {
+        case .classic:
+            return renderClassic(state, animation: animation, crests: crests)
+        case .slate, .stadium, .compact:
+            return ScoreboardStyleRenderer.render(state, animation: animation, crests: crests)
+        }
+    }
+
     /// PL MotD colour scorebug: purple straps, mint score, white clock, compact LFL crest.
     @MainActor
-    static func render(_ state: ScoreboardState, animation: GoalAnimation? = nil) -> CGImage? {
+    private static func renderClassic(
+        _ state: ScoreboardState,
+        animation: GoalAnimation?,
+        crests: TeamCrests
+    ) -> CGImage? {
         let size = state.size
         let canvas = size.renderSize
         let stripW = size.stripWidth
@@ -115,10 +134,40 @@ enum ScoreboardRenderer {
 
             drawLFLLogo(in: logoRect)
 
-            // Cards flush under each team strap (not under the clock).
+            // Team crests in the logo row, centred over each team strap.
+            let crestH = logoH * 0.9
+            drawCrest(crests.home, in: CGRect(x: homeRect.minX, y: logoRect.maxY - crestH, width: homeRect.width, height: crestH))
+            drawCrest(crests.away, in: CGRect(x: awayRect.minX, y: logoRect.maxY - crestH, width: awayRect.width, height: crestH))
+
+            // Added time "+3": small purple tab hugging the right of the clock.
+            if state.showClock, clockH > 0, state.addedMinutes > 0, !state.isShootout {
+                let addedRect = CGRect(
+                    x: clockRect.maxX,
+                    y: clockRect.minY,
+                    width: (scoreW * 0.42).rounded(),
+                    height: clockH
+                )
+                purple.setFill()
+                UIBezierPath(rect: addedRect).fill()
+                drawCentered(
+                    "+\(state.addedMinutes)",
+                    in: addedRect,
+                    font: boardFont(size: size.fontSize * 0.72),
+                    color: mint,
+                    kern: 0.2
+                )
+            }
+
+            // Cards flush under each team strap (not under the clock);
+            // during a shoot-out the same band shows the kicks instead.
             let cardH: CGFloat = 12
             let cardGap: CGFloat = 2
             let cardY = barY + barH + cardGap
+            if state.isShootout {
+                drawPens(state.homePens, in: CGRect(x: homeRect.minX + 2, y: cardY, width: homeRect.width - 4, height: cardH), trailing: false)
+                drawPens(state.awayPens, in: CGRect(x: awayRect.minX + 2, y: cardY, width: awayRect.width - 4, height: cardH), trailing: true)
+                return
+            }
             drawCards(
                 yellow: state.homeYellow,
                 red: state.homeRed,
@@ -153,12 +202,13 @@ enum ScoreboardRenderer {
         let scoreFont = boardFont(size: fontSize * 1.05)
         let clockFont = boardFont(size: fontSize * 0.82)
 
-        drawCentered(abbreviated(state.homeName), in: homeRect, font: abbrFont, color: .white, kern: kern)
-        drawCentered(abbreviated(state.awayName), in: awayRect, font: abbrFont, color: .white, kern: kern)
+        drawCentered(teamLabel(state.homeName), in: homeRect, font: abbrFont, color: .white, kern: kern)
+        drawCentered(teamLabel(state.awayName), in: awayRect, font: abbrFont, color: .white, kern: kern)
         drawCentered(state.scoreText, in: scoreRect, font: scoreFont, color: .black, kern: 0.2)
 
         if state.showClock, clockRect.height > 1 {
-            drawCentered(state.clockText, in: clockRect, font: clockFont, color: .black, kern: 0.3)
+            let text = state.isShootout ? state.pensText : state.clockText
+            drawCentered(text, in: clockRect, font: clockFont, color: .black, kern: 0.3)
         }
     }
 
@@ -246,7 +296,7 @@ enum ScoreboardRenderer {
         let abbrFont = boardFont(size: fontSize * 0.95)
         if animation.side == .home {
             drawLeft(
-                abbreviated(scoringName),
+                teamLabel(scoringName),
                 in: CGRect(x: expandRect.minX + stripW + 8, y: bar.minY, width: barH * 2.2, height: barH),
                 font: abbrFont,
                 color: textOnKit,
@@ -254,7 +304,7 @@ enum ScoreboardRenderer {
             )
         } else {
             drawRight(
-                abbreviated(scoringName),
+                teamLabel(scoringName),
                 in: CGRect(x: expandRect.maxX - stripW - barH * 2.4, y: bar.minY, width: barH * 2.2, height: barH),
                 font: abbrFont,
                 color: textOnKit,
@@ -287,8 +337,8 @@ enum ScoreboardRenderer {
             purple.setFill()
             UIBezierPath(rect: homeRect).fill()
             UIBezierPath(rect: awayRect).fill()
-            drawCentered(abbreviated(homeName), in: homeRect, font: abbrFont, color: .white, kern: kern)
-            drawCentered(abbreviated(awayName), in: awayRect, font: abbrFont, color: .white, kern: kern)
+            drawCentered(teamLabel(homeName), in: homeRect, font: abbrFont, color: .white, kern: kern)
+            drawCentered(teamLabel(awayName), in: awayRect, font: abbrFont, color: .white, kern: kern)
             drawCentered(
                 "\(max(0, homeScoreValue))-\(max(0, awayScoreValue))",
                 in: scoreRect,
@@ -320,7 +370,7 @@ enum ScoreboardRenderer {
     // MARK: - LFL crest
 
     @MainActor
-    private static func drawLFLLogo(in rect: CGRect) {
+    static func drawLFLLogo(in rect: CGRect) {
         guard let logo = preparedLFLLogo(fitting: rect.size) else {
             drawLFLFallback(in: rect)
             return
@@ -403,20 +453,63 @@ enum ScoreboardRenderer {
 
     // MARK: - Helpers
 
-    private static func kitUIColor(_ kit: TeamKitColor) -> UIColor {
-        switch kit {
-        case .blue: return UIColor(red: 0.45, green: 0.78, blue: 0.98, alpha: 1)
-        case .red: return UIColor(red: 0.85, green: 0.12, blue: 0.16, alpha: 1)
-        case .white: return UIColor(red: 0.96, green: 0.96, blue: 0.97, alpha: 1)
-        case .black: return UIColor(red: 0.12, green: 0.12, blue: 0.14, alpha: 1)
-        case .orange: return UIColor(red: 0.96, green: 0.48, blue: 0.08, alpha: 1)
-        case .green: return UIColor(red: 0.12, green: 0.62, blue: 0.32, alpha: 1)
-        case .purple: return UIColor(red: 0.48, green: 0.18, blue: 0.68, alpha: 1)
-        case .claret: return UIColor(red: 0.55, green: 0.08, blue: 0.22, alpha: 1)
+    /// Crest image aspect-fit into `rect`; nothing when the team has none.
+    static func drawCrest(_ crest: CGImage?, in rect: CGRect) {
+        guard let crest, rect.width > 1, rect.height > 1 else { return }
+        let src = CGSize(width: crest.width, height: crest.height)
+        let scale = min(rect.width / src.width, rect.height / src.height)
+        let drawSize = CGSize(width: src.width * scale, height: src.height * scale)
+        let target = CGRect(
+            x: rect.midX - drawSize.width / 2,
+            y: rect.midY - drawSize.height / 2,
+            width: drawSize.width,
+            height: drawSize.height
+        )
+        UIImage(cgImage: crest).draw(in: target)
+    }
+
+    /// Shoot-out kicks: mint = scored, red = missed, outline = still to take.
+    /// Always five slots; sudden death adds more (last 7 shown).
+    static func drawPens(_ kicks: [Bool], in rect: CGRect, trailing: Bool) {
+        let shown = Array(kicks.suffix(7))
+        let slots = max(5, shown.count)
+        let gap = max(2, rect.height * 0.25)
+        let d = min(rect.height, (rect.width - gap * CGFloat(slots - 1)) / CGFloat(slots))
+        guard d > 1 else { return }
+        let total = d * CGFloat(slots) + gap * CGFloat(slots - 1)
+        var x = trailing ? rect.maxX - total : rect.minX
+        let y = rect.midY - d / 2
+        for index in 0..<slots {
+            let dot = CGRect(x: x, y: y, width: d, height: d)
+            if index < shown.count {
+                (shown[index] ? penScoredColor : penMissedColor).setFill()
+                UIBezierPath(ovalIn: dot).fill()
+            } else {
+                UIColor.white.withAlphaComponent(0.9).setStroke()
+                let ring = UIBezierPath(ovalIn: dot.insetBy(dx: 0.75, dy: 0.75))
+                ring.lineWidth = 1.5
+                ring.stroke()
+            }
+            x += d + gap
         }
     }
 
-    private static func drawCards(
+    static var penScoredColor: UIColor { UIColor(red: 0.0, green: 1.0, blue: 0.52, alpha: 1) }
+    static var penMissedColor: UIColor { UIColor(red: 0.89, green: 0.15, blue: 0.18, alpha: 1) }
+
+    /// Readable text on top of a kit colour.
+    static func textColor(onKit kit: TeamKitColor) -> UIColor {
+        let c = kit.rgb
+        let luma = 0.299 * c.red + 0.587 * c.green + 0.114 * c.blue
+        return luma > 0.6 ? .black : .white
+    }
+
+    static func kitUIColor(_ kit: TeamKitColor) -> UIColor {
+        let c = kit.rgb
+        return UIColor(red: c.red, green: c.green, blue: c.blue, alpha: 1)
+    }
+
+    static func drawCards(
         yellow: Int,
         red: Int,
         at origin: CGPoint,
@@ -445,7 +538,7 @@ enum ScoreboardRenderer {
         }
     }
 
-    private static func drawCentered(
+    static func drawCentered(
         _ text: String,
         in rect: CGRect,
         font: UIFont,
@@ -465,7 +558,7 @@ enum ScoreboardRenderer {
         )
     }
 
-    private static func drawLeft(
+    static func drawLeft(
         _ text: String,
         in rect: CGRect,
         font: UIFont,
@@ -482,7 +575,7 @@ enum ScoreboardRenderer {
         ns.draw(at: CGPoint(x: rect.minX, y: rect.midY - size.height / 2), withAttributes: attrs)
     }
 
-    private static func drawRight(
+    static func drawRight(
         _ text: String,
         in rect: CGRect,
         font: UIFont,
@@ -499,16 +592,16 @@ enum ScoreboardRenderer {
         ns.draw(at: CGPoint(x: rect.maxX - size.width, y: rect.midY - size.height / 2), withAttributes: attrs)
     }
 
-    private static func abbreviated(_ value: String) -> String {
+    static func teamLabel(_ value: String) -> String {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return "TBD" }
-        let parts = trimmed.split(separator: " ").filter { !$0.isEmpty }
-        if parts.count >= 2 {
-            let initials = parts.prefix(3).map { String($0.prefix(1)) }.joined()
-            if initials.count >= 2 { return String(initials.prefix(3)).uppercased() }
-        }
-        let compact = trimmed.replacingOccurrences(of: " ", with: "")
-        if compact.count <= 3 { return compact.uppercased() }
-        return String(compact.prefix(3)).uppercased()
+        return trimmed.isEmpty ? "TBD" : trimmed
     }
+}
+
+/// Optional club crests drawn on the scorebug.
+struct TeamCrests: @unchecked Sendable {
+    var home: CGImage?
+    var away: CGImage?
+
+    static let none = TeamCrests()
 }

@@ -25,11 +25,11 @@ open OnPitch.xcodeproj
 
 ## How to go live
 
-1. Open **Destinations** → add a destination.
-2. Paste the platform ingest URL and stream key (from YouTube Studio / Twitch Dashboard / VK Live).
-3. Enable the destinations you want (max 3).
-4. Adjust resolution / bitrate in **Settings** if needed (default 720p @ 2500 kbps).
-5. On **Live**, tap the red button to start. Tap again to stop.
+1. On the home screen, set teams, kit colours and the scorebug position.
+2. Under **Where to stream**, add a platform: paste the ingest URL and stream key (from YouTube Studio / Twitch Dashboard / VK Live).
+3. Switch on the platforms you want (max 3) and pick a quality preset (Economy / Balance / Maximum, or **Fine-tune**).
+4. Tap **Open camera** → the on-air button → check the pre-flight panel → **Start stream**.
+5. To stop, **press and hold** the on-air button (~1 s) — a tap only shows a hint, so you can't stop by accident.
 
 ### Example ingest URLs
 

@@ -10,7 +10,8 @@ final class StreamHealthTests: XCTestCase {
 
     func testAudioOnlyIsSevere() {
         let health = StreamHealth.audioOnly(uploadKBps: 16)
-        XCTAssertTrue(health.chipText.contains("AUDIO ONLY"))
+        XCTAssertFalse(health.chipText.isEmpty)
+        XCTAssertTrue(health.chipText.contains("16"))
         XCTAssertEqual(health.severity, 3)
         XCTAssertNotNil(health.detailHint)
     }
@@ -21,7 +22,7 @@ final class StreamHealthTests: XCTestCase {
     }
 
     func testVKViewerStatusChips() {
-        XCTAssertEqual(VKViewerStatus.ok(viewers: 12).chipText, "VK OK · 12")
+        XCTAssertEqual(VKViewerStatus.ok(viewers: 12).chipText, "12")
         XCTAssertEqual(VKViewerStatus.frozen(viewers: 3).severity, 3)
         XCTAssertEqual(VKViewerStatus.offline.chipText, "VK OFF")
     }

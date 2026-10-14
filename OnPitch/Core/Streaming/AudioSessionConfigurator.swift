@@ -7,9 +7,10 @@ actor AudioSessionConfigurator {
 
     private var lastActivateAt: Date?
 
-    func activate() async {
+    /// `force` skips coalescing — after an interruption the session must really be re-activated.
+    func activate(force: Bool = false) async {
         // Coalesce bursts from startPreview + startStreaming + foreground.
-        if let last = lastActivateAt, Date().timeIntervalSince(last) < 0.35 {
+        if !force, let last = lastActivateAt, Date().timeIntervalSince(last) < 0.35 {
             return
         }
         lastActivateAt = Date()

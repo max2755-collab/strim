@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-enum GoalSide: String, Sendable {
+enum GoalSide: String, Codable, Sendable {
     case home
     case away
 }

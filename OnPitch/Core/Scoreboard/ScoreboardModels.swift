@@ -13,20 +13,6 @@ enum ScoreboardPosition: String, CaseIterable, Identifiable, Codable, Sendable {
     case bottomRight
 
     var id: String { rawValue }
-
-    var shortLabel: String {
-        switch self {
-        case .topLeft: return "TL"
-        case .topCenter: return "TC"
-        case .topRight: return "TR"
-        case .middleLeft: return "ML"
-        case .middleCenter: return "MC"
-        case .middleRight: return "MR"
-        case .bottomLeft: return "BL"
-        case .bottomCenter: return "BC"
-        case .bottomRight: return "BR"
-        }
-    }
 }
 
 enum ScoreboardSize: String, CaseIterable, Identifiable, Codable, Sendable {
@@ -45,7 +31,8 @@ enum ScoreboardSize: String, CaseIterable, Identifiable, Codable, Sendable {
     }
 
     /// Scale vs MotD board spec (block 102×38, strip 6, type 28).
-    private var scale: CGFloat {
+    /// Overall scale vs the medium board (alternative styles size themselves from it).
+    var scale: CGFloat {
         switch self {
         case .small: return 0.85
         case .medium: return 1.0
@@ -105,39 +92,20 @@ enum TeamKitColor: String, CaseIterable, Identifiable, Codable, Sendable {
 
     var id: String { rawValue }
 
-    var displayName: String {
+    /// Exact strip colours of the burned-in scorebug (sRGB 0…1). The UI swatches reuse
+    /// these so the prep screen always matches what viewers see.
+    var rgb: (red: Double, green: Double, blue: Double) {
         switch self {
-        case .blue: return "Blue"
-        case .red: return "Red"
-        case .white: return "White"
-        case .black: return "Black"
-        case .orange: return "Orange"
-        case .green: return "Green"
-        case .purple: return "Purple"
-        case .claret: return "Claret"
+        case .blue: return (0.45, 0.78, 0.98)
+        case .red: return (0.85, 0.12, 0.16)
+        case .white: return (0.96, 0.96, 0.97)
+        case .black: return (0.12, 0.12, 0.14)
+        case .orange: return (0.96, 0.48, 0.08)
+        case .green: return (0.12, 0.62, 0.32)
+        case .purple: return (0.48, 0.18, 0.68)
+        case .claret: return (0.55, 0.08, 0.22)
         }
     }
-}
-
-struct TeamPreset: Identifiable, Sendable {
-    let id: String
-    let name: String
-    let kit: TeamKitColor
-
-    static let samples: [TeamPreset] = [
-        .init(id: "che", name: "CHE", kit: .blue),
-        .init(id: "liv", name: "LIV", kit: .red),
-        .init(id: "mun", name: "MUN", kit: .red),
-        .init(id: "mci", name: "MCI", kit: .blue),
-        .init(id: "ars", name: "ARS", kit: .red),
-        .init(id: "tot", name: "TOT", kit: .white),
-        .init(id: "new", name: "NEW", kit: .black),
-        .init(id: "whu", name: "WHU", kit: .claret),
-        .init(id: "rma", name: "RMA", kit: .white),
-        .init(id: "bar", name: "BAR", kit: .blue),
-        .init(id: "bay", name: "BAY", kit: .red),
-        .init(id: "psg", name: "PSG", kit: .blue)
-    ]
 }
 
 struct ScoreboardState: Equatable, Sendable {
@@ -158,6 +126,24 @@ struct ScoreboardState: Equatable, Sendable {
     var homeRed: Int
     var awayYellow: Int
     var awayRed: Int
+    /// Length of one half. LFL plays 2 × 30, standard football 2 × 45.
+    var halfLengthMinutes: Int = ScoreboardState.defaultHalfLength
+    /// Announced added time for the current half ("+3" on the scorebug); 0 = none.
+    var addedMinutes: Int = 0
+    /// Goals in order, for the post-match highlight list.
+    var goals: [GoalEvent] = []
+    /// Look of the burned-in scorebug.
+    var style: ScoreboardStyle = .classic
+    /// Teams picked from the league library (roster + crest); nil = typed by hand.
+    var homeTeamID: UUID?
+    var awayTeamID: UUID?
+    /// Shoot-out kicks in order: true = scored.
+    var homePens: [Bool] = []
+    var awayPens: [Bool] = []
+
+    static let halfLengthOptions = [30, 45]
+    static let defaultHalfLength = 30
+    static let maxAddedMinutes = 15
 
     static let `default` = ScoreboardState(
         isVisible: false,
@@ -189,6 +175,79 @@ struct ScoreboardState: Equatable, Sendable {
     var scoreText: String {
         "\(max(0, homeScore))-\(max(0, awayScore))"
     }
+
+    var homePensScored: Int { homePens.filter { $0 }.count }
+    var awayPensScored: Int { awayPens.filter { $0 }.count }
+
+    /// "4–3" during a shoot-out.
+    var pensText: String { "\(homePensScored)–\(awayPensScored)" }
+
+    var isShootout: Bool { period == .penalties }
+
+    /// Where the clock starts for a period (2nd half restarts at 30:00 / 45:00).
+    func startSeconds(of period: MatchPeriod) -> Int {
+        switch period {
+        case .firstHalf: return 0
+        case .secondHalf: return halfLengthMinutes * 60
+        case .extraTime, .penalties: return 2 * halfLengthMinutes * 60
+        }
+    }
+
+    /// Regulation end of the current half; nil for extra time / penalties (run manually).
+    var periodEndSeconds: Int? {
+        switch period {
+        case .firstHalf: return halfLengthMinutes * 60
+        case .secondHalf: return 2 * halfLengthMinutes * 60
+        case .extraTime, .penalties: return nil
+        }
+    }
+
+    /// When the clock stops by itself: end of the half plus announced added time.
+    var autoStopSeconds: Int? {
+        periodEndSeconds.map { $0 + addedMinutes * 60 }
+    }
+}
+
+/// One goal, stamped with match time and (when on air) the position in the broadcast,
+/// so highlights can be cut from the VOD without scrubbing.
+struct GoalEvent: Codable, Equatable, Identifiable, Sendable {
+    var id = UUID()
+    var side: GoalSide
+    var teamName: String
+    var elapsedSeconds: Int
+    var period: MatchPeriod
+    /// Seconds since the stream went live; nil if scored while off air.
+    var streamOffset: TimeInterval?
+    var recordedAt = Date()
+    /// Who scored ("10 Иванов"), picked from the roster after the goal.
+    var scorer: String?
+
+    /// Football minute: 11:24 → 12'; in added time 30+2'.
+    func minuteLabel(halfLength: Int) -> String {
+        let minute = elapsedSeconds / 60 + 1
+        let end: Int?
+        switch period {
+        case .firstHalf: end = halfLength
+        case .secondHalf: end = 2 * halfLength
+        case .extraTime, .penalties: end = nil
+        }
+        if let end, minute > end {
+            return "\(end)+\(minute - end)'"
+        }
+        return "\(minute)'"
+    }
+
+    var matchClockText: String {
+        String(format: "%02d:%02d", elapsedSeconds / 60, elapsedSeconds % 60)
+    }
+
+    /// `1:02:11` / `12:34` position in the broadcast recording.
+    var streamOffsetText: String? {
+        guard let streamOffset else { return nil }
+        let total = max(0, Int(streamOffset))
+        let h = total / 3600, m = (total % 3600) / 60, s = total % 60
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%02d:%02d", m, s)
+    }
 }
 
 extension ScoreboardState: Codable {
@@ -197,26 +256,47 @@ extension ScoreboardState: Codable {
         case elapsedSeconds, isClockRunning, period, position, size
         case homeKit, awayKit, showClock
         case homeYellow, homeRed, awayYellow, awayRed
+        case halfLengthMinutes, addedMinutes, goals
+        case style, homeTeamID, awayTeamID, homePens, awayPens
     }
 
     init(from decoder: Decoder) throws {
+        let d = ScoreboardState.default
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        isVisible = try c.decodeIfPresent(Bool.self, forKey: .isVisible) ?? false
-        homeName = try c.decodeIfPresent(String.self, forKey: .homeName) ?? "HOME"
-        awayName = try c.decodeIfPresent(String.self, forKey: .awayName) ?? "AWAY"
-        homeScore = try c.decodeIfPresent(Int.self, forKey: .homeScore) ?? 0
-        awayScore = try c.decodeIfPresent(Int.self, forKey: .awayScore) ?? 0
-        elapsedSeconds = try c.decodeIfPresent(Int.self, forKey: .elapsedSeconds) ?? 0
-        isClockRunning = try c.decodeIfPresent(Bool.self, forKey: .isClockRunning) ?? false
-        period = try c.decodeIfPresent(MatchPeriod.self, forKey: .period) ?? .firstHalf
-        position = try c.decodeIfPresent(ScoreboardPosition.self, forKey: .position) ?? .topLeft
-        size = try c.decodeIfPresent(ScoreboardSize.self, forKey: .size) ?? .medium
-        homeKit = try c.decodeIfPresent(TeamKitColor.self, forKey: .homeKit) ?? .blue
-        awayKit = try c.decodeIfPresent(TeamKitColor.self, forKey: .awayKit) ?? .red
-        showClock = try c.decodeIfPresent(Bool.self, forKey: .showClock) ?? true
-        homeYellow = try c.decodeIfPresent(Int.self, forKey: .homeYellow) ?? 0
-        homeRed = try c.decodeIfPresent(Int.self, forKey: .homeRed) ?? 0
-        awayYellow = try c.decodeIfPresent(Int.self, forKey: .awayYellow) ?? 0
-        awayRed = try c.decodeIfPresent(Int.self, forKey: .awayRed) ?? 0
+        isVisible = try c.decodeIfPresent(Bool.self, forKey: .isVisible) ?? d.isVisible
+        homeName = try c.decodeIfPresent(String.self, forKey: .homeName) ?? d.homeName
+        awayName = try c.decodeIfPresent(String.self, forKey: .awayName) ?? d.awayName
+        homeScore = try c.decodeIfPresent(Int.self, forKey: .homeScore) ?? d.homeScore
+        awayScore = try c.decodeIfPresent(Int.self, forKey: .awayScore) ?? d.awayScore
+        elapsedSeconds = try c.decodeIfPresent(Int.self, forKey: .elapsedSeconds) ?? d.elapsedSeconds
+        isClockRunning = try c.decodeIfPresent(Bool.self, forKey: .isClockRunning) ?? d.isClockRunning
+        period = try c.decodeIfPresent(MatchPeriod.self, forKey: .period) ?? d.period
+        position = try c.decodeIfPresent(ScoreboardPosition.self, forKey: .position) ?? d.position
+        size = try c.decodeIfPresent(ScoreboardSize.self, forKey: .size) ?? d.size
+        homeKit = try c.decodeIfPresent(TeamKitColor.self, forKey: .homeKit) ?? d.homeKit
+        awayKit = try c.decodeIfPresent(TeamKitColor.self, forKey: .awayKit) ?? d.awayKit
+        showClock = try c.decodeIfPresent(Bool.self, forKey: .showClock) ?? d.showClock
+        homeYellow = try c.decodeIfPresent(Int.self, forKey: .homeYellow) ?? d.homeYellow
+        homeRed = try c.decodeIfPresent(Int.self, forKey: .homeRed) ?? d.homeRed
+        awayYellow = try c.decodeIfPresent(Int.self, forKey: .awayYellow) ?? d.awayYellow
+        awayRed = try c.decodeIfPresent(Int.self, forKey: .awayRed) ?? d.awayRed
+        halfLengthMinutes = try c.decodeIfPresent(Int.self, forKey: .halfLengthMinutes) ?? d.halfLengthMinutes
+        addedMinutes = try c.decodeIfPresent(Int.self, forKey: .addedMinutes) ?? d.addedMinutes
+        goals = try c.decodeIfPresent([GoalEvent].self, forKey: .goals) ?? d.goals
+        style = (try? c.decodeIfPresent(ScoreboardStyle.self, forKey: .style)) ?? d.style
+        homeTeamID = try c.decodeIfPresent(UUID.self, forKey: .homeTeamID)
+        awayTeamID = try c.decodeIfPresent(UUID.self, forKey: .awayTeamID)
+        homePens = try c.decodeIfPresent([Bool].self, forKey: .homePens) ?? d.homePens
+        awayPens = try c.decodeIfPresent([Bool].self, forKey: .awayPens) ?? d.awayPens
     }
+}
+
+/// Selectable scorebug looks. `classic` is the owner-approved LFL board and stays the default.
+enum ScoreboardStyle: String, CaseIterable, Identifiable, Codable, Sendable {
+    case classic
+    case slate
+    case stadium
+    case compact
+
+    var id: String { rawValue }
 }

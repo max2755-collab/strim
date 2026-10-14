@@ -7,26 +7,42 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		CA37785E62B9E25BFBD0E2E5 /* TeamLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E701B9131498E99EF57EE7A /* TeamLibraryView.swift */; };
+		2D791AEBCD3EEC15937B1575 /* GoalClipExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABB46105C9E147CE73352B4D /* GoalClipExporter.swift */; };
+		C67EFEE111C2EF0F6AF39D3B /* TwitchViewerMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C4B4EA577BE718A4E1E6830 /* TwitchViewerMonitor.swift */; };
+		CD44113C4CE8B27C3A891268 /* BrandingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EB6C52CB7A5B23DE8EF6C58 /* BrandingController.swift */; };
+		E37227C6A502D019A9AA2A5F /* TeamLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CD288899BEF17D33D6DB5A0 /* TeamLibrary.swift */; };
+		F802FA2810C5CAA9C0B84321 /* MatchCardRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C23929162B474A4F773DCD1 /* MatchCardRenderer.swift */; };
+		93C84895329013FD9CEEED52 /* ScoreboardStyleRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 315192AB15494CA4FA5D572D /* ScoreboardStyleRenderer.swift */; };
+		A1B2C3D4E5F60718293A4B5D /* AuthSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* AuthSupport.swift */; };
 		057C12958B81420F73CCACE8 /* StreamingBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60A7D9EE375EB72BA7B7F392 /* StreamingBootstrap.swift */; };
 		0BAF4BB685FBF2EBBA5ACFD0 /* RTMPPublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B70237E658D430FC6DB5D0E /* RTMPPublisher.swift */; };
 		0F8B9578D334060A7F76DC60 /* AudioSessionConfigurator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59188DE98DCE47C24D792909 /* AudioSessionConfigurator.swift */; };
 		1056730E40B10A689584868A /* OnPitchChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1086E94D6B27AA6B6C14F6 /* OnPitchChrome.swift */; };
 		12731A02FFDF8C48AE17032F /* OrientationHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84415962FCD13FEA063FFBEF /* OrientationHelper.swift */; };
+		1BFFF8A16CB959E668D3F00E /* VKLiveAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46987D69FE94A9A057992164 /* VKLiveAPIClient.swift */; };
+		2276FBAEB19ECBC8BA6C8403 /* LiveStatusStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E718C52A4A004B5F320737C /* LiveStatusStrip.swift */; };
+		24C814531B04E5CF8F08D620 /* VKLiveConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12DEDC09658D115A4C28839E /* VKLiveConfig.swift */; };
 		2A45480A4F635CE1505AEA62 /* VKChatAPITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D98113E9D1BD571E794B36 /* VKChatAPITests.swift */; };
+		2B1419D5D9619518A22556BB /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = ACC2E7E44AE66008FF04C983 /* InfoPlist.xcstrings */; };
 		2E3C880C0CCE36510B95E2C8 /* RTMPHaishinKit in Frameworks */ = {isa = PBXBuildFile; productRef = ACA0DDDEA5C9A43A2AEE0744 /* RTMPHaishinKit */; };
 		2E69B0474378B0F02D9989E8 /* StreamHealthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81CD8FBA14F4F1113CBBEDBD /* StreamHealthTests.swift */; };
 		3217BA55AF1E3FE15E3C7B83 /* OnPitchTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E5A46B012A53EC356D58817 /* OnPitchTheme.swift */; };
 		34E23878C06E57A5C30CAE97 /* ReconnectBackoffTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 139F6FC7B4A70FF6704F883C /* ReconnectBackoffTests.swift */; };
 		383F5DB40E32708402F0D3D2 /* VKChatModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6CCBF8FABD5350EDCFD590B /* VKChatModels.swift */; };
+		3B1EFC08FEBFA8F7127F0CD5 /* VKLiveAuthController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35CF1554CF470BBC51EAACD9 /* VKLiveAuthController.swift */; };
 		3CC805E0BC0FC5238058DBF3 /* PremierSans.ttf in Resources */ = {isa = PBXBuildFile; fileRef = BEB4C63D06711445AE26ED80 /* PremierSans.ttf */; };
 		40A71ABD285C439C5A459A21 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7241CB90E2C2481BBA2C179F /* AppDelegate.swift */; };
 		40ABBEC7B32CC54328A1BF11 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D9EF6120EF9F5D8DFEF51E4D /* Assets.xcassets */; };
+		4C465732A574D20638011948 /* MultichatOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F908722EB9DC9E94D916A0AA /* MultichatOverlayView.swift */; };
 		4DAA62C3560893621847379F /* VKViewerMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9391FA1F86037FE889EC10A /* VKViewerMonitor.swift */; };
 		568EB7A21A36B03470AABACE /* StreamHealth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 602898FC04026B09D9A4DAFF /* StreamHealth.swift */; };
 		5DAFC68D2BC2F66A552C77F7 /* HaishinKit in Frameworks */ = {isa = PBXBuildFile; productRef = 2E4734EDD3DF1137B7D07619 /* HaishinKit */; };
 		6C7EA97FA1FB3895D2D19693 /* StreamSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00099B07D43B98D6EE09A6CD /* StreamSettingsView.swift */; };
 		72B7D2410DC869D6D30B24FD /* OnPitchLogoMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E5168100C96A7987DCA61F9 /* OnPitchLogoMark.swift */; };
+		75315038EE7C91B69C61E959 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = CC9A86CDB4DDA10F0F98C298 /* Localizable.xcstrings */; };
 		774DF1A96806E5123BA7EBDB /* ScoreboardController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24BC3867C05B0BD56A25A207 /* ScoreboardController.swift */; };
+		8A5097535E21441A3337BB03 /* TwitchConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8EC5F889CF3B615A517B3C7 /* TwitchConfig.swift */; };
 		8B3C4ACD6E08569BD1B894E3 /* VKChatClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9C0A3908D078AA68E7D97EE /* VKChatClient.swift */; };
 		8DCF65A05B3C69BE471354FB /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86CA30F62D538B0D07373B48 /* RootTabView.swift */; };
 		96AD385494EB27CC7CC56119 /* StreamConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA730598FE96CD3AC0632A80 /* StreamConfig.swift */; };
@@ -35,9 +51,11 @@
 		A3789270F5810BE4212D5CB6 /* NetworkStatusMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 910281584501EC892E7546CC /* NetworkStatusMonitor.swift */; };
 		A40CFB70BA534BF65CC11E25 /* ScoreboardPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF2E3194A74BCE2AE24EF7A9 /* ScoreboardPanelView.swift */; };
 		A4D769D985E1493FDF97B9C2 /* LiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 437DBF58AA44781233B37B90 /* LiveView.swift */; };
+		A597E055C1C69AB737D91C18 /* TwitchAuthController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9BB0C71BAD30EE4B00087C1 /* TwitchAuthController.swift */; };
+		A936889EBB446F81F55BBB3E /* LiveToastBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4EE84A54DB051F32422FD07 /* LiveToastBanner.swift */; };
+		AFA61C06D754A3E032ADA164 /* VKLiveConnectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACE6DFD514210E4EF2BA39F1 /* VKLiveConnectView.swift */; };
 		AFA69B4D1EF3569CD9CFB51D /* DestinationEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39F1817E553510251C337C30 /* DestinationEditorView.swift */; };
 		B24AAABF54FA87BA424CE0C8 /* StreamEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = F35F4026C858AB633A507C6A /* StreamEngine.swift */; };
-		B2ACB43C0A123B59C79EBC41 /* ChatOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 740780D042E4ECA16A27C662 /* ChatOverlayView.swift */; };
 		B521C342595A24554A117037 /* ScoreboardRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CDAFD7BA56C330192AE5948 /* ScoreboardRenderer.swift */; };
 		BE5077BB0B11362E98007C78 /* CaptureTuning.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5421618F9ACA1C892F9F066 /* CaptureTuning.swift */; };
 		C527CCC1E19EFA7C1425B99D /* StreamConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 806477DDF92FBD789AFDD61F /* StreamConfigTests.swift */; };
@@ -49,6 +67,8 @@
 		F0DAE3EA5C5A05DBB3948930 /* DestinationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB47C96DB79E08E180702804 /* DestinationsView.swift */; };
 		F160973FD39744FC3F7674B4 /* DevicePerformance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9212E9091B8ED936C20274EE /* DevicePerformance.swift */; };
 		F21368067E597934D031220E /* ScoreboardModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6478A08C9321584BEA868B31 /* ScoreboardModels.swift */; };
+		F7AC0A4F5A65B1A8EA821ADF /* TwitchConnectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DEF44A6FE9586050E5306DF /* TwitchConnectView.swift */; };
+		F9E1B1DF05D7ACDF379C6F95 /* TwitchChatClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E30D3709FB7F257078AB868 /* TwitchChatClient.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -62,14 +82,28 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		1E701B9131498E99EF57EE7A /* TeamLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamLibraryView.swift; sourceTree = "<group>"; };
+		ABB46105C9E147CE73352B4D /* GoalClipExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoalClipExporter.swift; sourceTree = "<group>"; };
+		5C4B4EA577BE718A4E1E6830 /* TwitchViewerMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwitchViewerMonitor.swift; sourceTree = "<group>"; };
+		5EB6C52CB7A5B23DE8EF6C58 /* BrandingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrandingController.swift; sourceTree = "<group>"; };
+		0CD288899BEF17D33D6DB5A0 /* TeamLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamLibrary.swift; sourceTree = "<group>"; };
+		9C23929162B474A4F773DCD1 /* MatchCardRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchCardRenderer.swift; sourceTree = "<group>"; };
+		315192AB15494CA4FA5D572D /* ScoreboardStyleRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreboardStyleRenderer.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5C /* AuthSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthSupport.swift; sourceTree = "<group>"; };
 		00099B07D43B98D6EE09A6CD /* StreamSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamSettingsView.swift; sourceTree = "<group>"; };
 		0E5A46B012A53EC356D58817 /* OnPitchTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnPitchTheme.swift; sourceTree = "<group>"; };
+		12DEDC09658D115A4C28839E /* VKLiveConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VKLiveConfig.swift; sourceTree = "<group>"; };
 		139F6FC7B4A70FF6704F883C /* ReconnectBackoffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReconnectBackoffTests.swift; sourceTree = "<group>"; };
+		1DEF44A6FE9586050E5306DF /* TwitchConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwitchConnectView.swift; sourceTree = "<group>"; };
+		1E718C52A4A004B5F320737C /* LiveStatusStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveStatusStrip.swift; sourceTree = "<group>"; };
 		24BC3867C05B0BD56A25A207 /* ScoreboardController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreboardController.swift; sourceTree = "<group>"; };
-		2D80004261CA56281A3C51A4 /* onPitch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = onPitch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2D80004261CA56281A3C51A4 /* OnPitch.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OnPitch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2E30D3709FB7F257078AB868 /* TwitchChatClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwitchChatClient.swift; sourceTree = "<group>"; };
+		35CF1554CF470BBC51EAACD9 /* VKLiveAuthController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VKLiveAuthController.swift; sourceTree = "<group>"; };
 		39F1817E553510251C337C30 /* DestinationEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DestinationEditorView.swift; sourceTree = "<group>"; };
 		3B70237E658D430FC6DB5D0E /* RTMPPublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTMPPublisher.swift; sourceTree = "<group>"; };
 		437DBF58AA44781233B37B90 /* LiveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveView.swift; sourceTree = "<group>"; };
+		46987D69FE94A9A057992164 /* VKLiveAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VKLiveAPIClient.swift; sourceTree = "<group>"; };
 		59188DE98DCE47C24D792909 /* AudioSessionConfigurator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSessionConfigurator.swift; sourceTree = "<group>"; };
 		5CDAFD7BA56C330192AE5948 /* ScoreboardRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreboardRenderer.swift; sourceTree = "<group>"; };
 		5FD8D881D022452B96598D8B /* LaunchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchView.swift; sourceTree = "<group>"; };
@@ -79,30 +113,36 @@
 		6478A08C9321584BEA868B31 /* ScoreboardModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreboardModels.swift; sourceTree = "<group>"; };
 		6E5168100C96A7987DCA61F9 /* OnPitchLogoMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnPitchLogoMark.swift; sourceTree = "<group>"; };
 		7241CB90E2C2481BBA2C179F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		740780D042E4ECA16A27C662 /* ChatOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatOverlayView.swift; sourceTree = "<group>"; };
 		806477DDF92FBD789AFDD61F /* StreamConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamConfigTests.swift; sourceTree = "<group>"; };
 		81CD8FBA14F4F1113CBBEDBD /* StreamHealthTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamHealthTests.swift; sourceTree = "<group>"; };
 		84415962FCD13FEA063FFBEF /* OrientationHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrientationHelper.swift; sourceTree = "<group>"; };
 		86CA30F62D538B0D07373B48 /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabView.swift; sourceTree = "<group>"; };
 		910281584501EC892E7546CC /* NetworkStatusMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkStatusMonitor.swift; sourceTree = "<group>"; };
 		9212E9091B8ED936C20274EE /* DevicePerformance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePerformance.swift; sourceTree = "<group>"; };
+		A9BB0C71BAD30EE4B00087C1 /* TwitchAuthController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwitchAuthController.swift; sourceTree = "<group>"; };
+		ACC2E7E44AE66008FF04C983 /* InfoPlist.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
+		ACE6DFD514210E4EF2BA39F1 /* VKLiveConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VKLiveConnectView.swift; sourceTree = "<group>"; };
 		B5421618F9ACA1C892F9F066 /* CaptureTuning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureTuning.swift; sourceTree = "<group>"; };
 		B6CCBF8FABD5350EDCFD590B /* VKChatModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VKChatModels.swift; sourceTree = "<group>"; };
 		B9391FA1F86037FE889EC10A /* VKViewerMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VKViewerMonitor.swift; sourceTree = "<group>"; };
 		B9C0A3908D078AA68E7D97EE /* VKChatClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VKChatClient.swift; sourceTree = "<group>"; };
 		BEB4C63D06711445AE26ED80 /* PremierSans.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = PremierSans.ttf; sourceTree = "<group>"; };
 		BECDCFB932AAAA00DFD8F822 /* DestinationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DestinationStore.swift; sourceTree = "<group>"; };
+		C4EE84A54DB051F32422FD07 /* LiveToastBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveToastBanner.swift; sourceTree = "<group>"; };
 		C8BDE35019A331BB8A8F3FC9 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		C8EC5F889CF3B615A517B3C7 /* TwitchConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwitchConfig.swift; sourceTree = "<group>"; };
 		CA1086E94D6B27AA6B6C14F6 /* OnPitchChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnPitchChrome.swift; sourceTree = "<group>"; };
+		CC9A86CDB4DDA10F0F98C298 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		D34702E1503E682A3E2D72CC /* OnPitchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnPitchApp.swift; sourceTree = "<group>"; };
 		D5E660A798C2C9898BBB0FAD /* AdaptiveBitRateStrategy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptiveBitRateStrategy.swift; sourceTree = "<group>"; };
 		D9EF6120EF9F5D8DFEF51E4D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		E1D98113E9D1BD571E794B36 /* VKChatAPITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VKChatAPITests.swift; sourceTree = "<group>"; };
-		E30150D23B26F482DB3157A7 /* OnPitchTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OnPitchTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		E30150D23B26F482DB3157A7 /* OnPitchTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OnPitchTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		EA730598FE96CD3AC0632A80 /* StreamConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamConfig.swift; sourceTree = "<group>"; };
 		EB47C96DB79E08E180702804 /* DestinationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DestinationsView.swift; sourceTree = "<group>"; };
 		EF2E3194A74BCE2AE24EF7A9 /* ScoreboardPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreboardPanelView.swift; sourceTree = "<group>"; };
 		F35F4026C858AB633A507C6A /* StreamEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamEngine.swift; sourceTree = "<group>"; };
+		F908722EB9DC9E94D916A0AA /* MultichatOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultichatOverlayView.swift; sourceTree = "<group>"; };
 		FC22166FBA3EDDEA7E6E92AD /* GoalAnimation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoalAnimation.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -119,11 +159,29 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		1D0D35A8503F2CEF6C5F502B /* Teams */ = {
+			isa = PBXGroup;
+			children = (
+				1E701B9131498E99EF57EE7A /* TeamLibraryView.swift */,
+			);
+			path = Teams;
+			sourceTree = "<group>";
+		};
+		A1B2C3D4E5F60718293A4B5E /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D4E5F60718293A4B5C /* AuthSupport.swift */,
+			);
+			path = Auth;
+			sourceTree = "<group>";
+		};
 		054C3460586B9111E8DEAD01 /* Storage */ = {
 			isa = PBXGroup;
 			children = (
 				BECDCFB932AAAA00DFD8F822 /* DestinationStore.swift */,
 				C8BDE35019A331BB8A8F3FC9 /* KeychainStore.swift */,
+				0CD288899BEF17D33D6DB5A0 /* TeamLibrary.swift */,
+				5EB6C52CB7A5B23DE8EF6C58 /* BrandingController.swift */,
 			);
 			path = Storage;
 			sourceTree = "<group>";
@@ -134,8 +192,11 @@
 				BEACA447C8F2D9B52A20B5D4 /* Chat */,
 				999DCDB9774C78C0E10D9F0C /* Models */,
 				D375F596126A39F3E4DD7BC4 /* Scoreboard */,
+				A1B2C3D4E5F60718293A4B5E /* Auth */,
 				054C3460586B9111E8DEAD01 /* Storage */,
 				232609F4EA9D255A9442F10D /* Streaming */,
+				F2D80B7AF4731A9B4CF6B5DC /* Twitch */,
+				6225D552DAD0C43ADE923349 /* VKLive */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -151,6 +212,7 @@
 				3B70237E658D430FC6DB5D0E /* RTMPPublisher.swift */,
 				F35F4026C858AB633A507C6A /* StreamEngine.swift */,
 				602898FC04026B09D9A4DAFF /* StreamHealth.swift */,
+				ABB46105C9E147CE73352B4D /* GoalClipExporter.swift */,
 			);
 			path = Streaming;
 			sourceTree = "<group>";
@@ -166,7 +228,7 @@
 		4C5B6BE483F99AA28DF3DA52 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				2D80004261CA56281A3C51A4 /* onPitch.app */,
+				2D80004261CA56281A3C51A4 /* OnPitch.app */,
 				E30150D23B26F482DB3157A7 /* OnPitchTests.xctest */,
 			);
 			name = Products;
@@ -175,8 +237,10 @@
 		565BC45E413543583B650D27 /* Live */ = {
 			isa = PBXGroup;
 			children = (
-				740780D042E4ECA16A27C662 /* ChatOverlayView.swift */,
+				1E718C52A4A004B5F320737C /* LiveStatusStrip.swift */,
+				C4EE84A54DB051F32422FD07 /* LiveToastBanner.swift */,
 				437DBF58AA44781233B37B90 /* LiveView.swift */,
+				F908722EB9DC9E94D916A0AA /* MultichatOverlayView.swift */,
 			);
 			path = Live;
 			sourceTree = "<group>";
@@ -196,6 +260,16 @@
 				EF2E3194A74BCE2AE24EF7A9 /* ScoreboardPanelView.swift */,
 			);
 			path = Scoreboard;
+			sourceTree = "<group>";
+		};
+		6225D552DAD0C43ADE923349 /* VKLive */ = {
+			isa = PBXGroup;
+			children = (
+				46987D69FE94A9A057992164 /* VKLiveAPIClient.swift */,
+				35CF1554CF470BBC51EAACD9 /* VKLiveAuthController.swift */,
+				12DEDC09658D115A4C28839E /* VKLiveConfig.swift */,
+			);
+			path = VKLive;
 			sourceTree = "<group>";
 		};
 		6995D172EAD6EAF4AA82DE44 /* UI */ = {
@@ -265,6 +339,8 @@
 			children = (
 				C6977982667BDA8AFF9986A4 /* Fonts */,
 				D9EF6120EF9F5D8DFEF51E4D /* Assets.xcassets */,
+				ACC2E7E44AE66008FF04C983 /* InfoPlist.xcstrings */,
+				CC9A86CDB4DDA10F0F98C298 /* Localizable.xcstrings */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -274,6 +350,8 @@
 			children = (
 				39F1817E553510251C337C30 /* DestinationEditorView.swift */,
 				EB47C96DB79E08E180702804 /* DestinationsView.swift */,
+				1DEF44A6FE9586050E5306DF /* TwitchConnectView.swift */,
+				ACE6DFD514210E4EF2BA39F1 /* VKLiveConnectView.swift */,
 			);
 			path = Destinations;
 			sourceTree = "<group>";
@@ -304,6 +382,7 @@
 				565BC45E413543583B650D27 /* Live */,
 				5CEB896E6F60510A66627B49 /* Scoreboard */,
 				2AC616701C3D6550FA417233 /* Settings */,
+				1D0D35A8503F2CEF6C5F502B /* Teams */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -315,8 +394,21 @@
 				24BC3867C05B0BD56A25A207 /* ScoreboardController.swift */,
 				6478A08C9321584BEA868B31 /* ScoreboardModels.swift */,
 				5CDAFD7BA56C330192AE5948 /* ScoreboardRenderer.swift */,
+				315192AB15494CA4FA5D572D /* ScoreboardStyleRenderer.swift */,
+				9C23929162B474A4F773DCD1 /* MatchCardRenderer.swift */,
 			);
 			path = Scoreboard;
+			sourceTree = "<group>";
+		};
+		F2D80B7AF4731A9B4CF6B5DC /* Twitch */ = {
+			isa = PBXGroup;
+			children = (
+				A9BB0C71BAD30EE4B00087C1 /* TwitchAuthController.swift */,
+				2E30D3709FB7F257078AB868 /* TwitchChatClient.swift */,
+				C8EC5F889CF3B615A517B3C7 /* TwitchConfig.swift */,
+				5C4B4EA577BE718A4E1E6830 /* TwitchViewerMonitor.swift */,
+			);
+			path = Twitch;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -340,7 +432,7 @@
 				ACA0DDDEA5C9A43A2AEE0744 /* RTMPHaishinKit */,
 			);
 			productName = OnPitch;
-			productReference = 2D80004261CA56281A3C51A4 /* onPitch.app */;
+			productReference = 2D80004261CA56281A3C51A4 /* OnPitch.app */;
 			productType = "com.apple.product-type.application";
 		};
 		DA998150699445E6624613F3 /* OnPitchTests */ = {
@@ -368,9 +460,10 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 2700;
+				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					12110C692403AC43CAE797F9 = {
+						DevelopmentTeam = 4PPZFZHK5J;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -381,11 +474,12 @@
 			knownRegions = (
 				Base,
 				en,
+				ru,
 			);
 			mainGroup = 586A6707737BC87B7443DFFF;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				E0C77AEAAA67E959AB5F73E3 /* XCRemoteSwiftPackageReference "HaishinKit" */,
+				E0C77AEAAA67E959AB5F73E3 /* XCRemoteSwiftPackageReference "HaishinKit.swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 4C5B6BE483F99AA28DF3DA52 /* Products */;
@@ -404,6 +498,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				40ABBEC7B32CC54328A1BF11 /* Assets.xcassets in Resources */,
+				2B1419D5D9619518A22556BB /* InfoPlist.xcstrings in Resources */,
+				75315038EE7C91B69C61E959 /* Localizable.xcstrings in Resources */,
 				3CC805E0BC0FC5238058DBF3 /* PremierSans.ttf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -430,15 +526,18 @@
 				40A71ABD285C439C5A459A21 /* AppDelegate.swift in Sources */,
 				0F8B9578D334060A7F76DC60 /* AudioSessionConfigurator.swift in Sources */,
 				BE5077BB0B11362E98007C78 /* CaptureTuning.swift in Sources */,
-				B2ACB43C0A123B59C79EBC41 /* ChatOverlayView.swift in Sources */,
 				AFA69B4D1EF3569CD9CFB51D /* DestinationEditorView.swift in Sources */,
 				D519E66163C0D3AE0453B8D1 /* DestinationStore.swift in Sources */,
 				F0DAE3EA5C5A05DBB3948930 /* DestinationsView.swift in Sources */,
 				F160973FD39744FC3F7674B4 /* DevicePerformance.swift in Sources */,
 				C6BC9C99F3D9CCFA5283A3F0 /* GoalAnimation.swift in Sources */,
 				DC1CD281ACF8B9E867CF50DA /* KeychainStore.swift in Sources */,
+				A1B2C3D4E5F60718293A4B5D /* AuthSupport.swift in Sources */,
 				C747B0D803DE772D930E2F15 /* LaunchView.swift in Sources */,
+				2276FBAEB19ECBC8BA6C8403 /* LiveStatusStrip.swift in Sources */,
+				A936889EBB446F81F55BBB3E /* LiveToastBanner.swift in Sources */,
 				A4D769D985E1493FDF97B9C2 /* LiveView.swift in Sources */,
+				4C465732A574D20638011948 /* MultichatOverlayView.swift in Sources */,
 				A3789270F5810BE4212D5CB6 /* NetworkStatusMonitor.swift in Sources */,
 				C748BC5B90C493BA8850C240 /* OnPitchApp.swift in Sources */,
 				1056730E40B10A689584868A /* OnPitchChrome.swift in Sources */,
@@ -454,11 +553,26 @@
 				96AD385494EB27CC7CC56119 /* StreamConfig.swift in Sources */,
 				9944813792710FD66CFF709C /* StreamDestination.swift in Sources */,
 				B24AAABF54FA87BA424CE0C8 /* StreamEngine.swift in Sources */,
+				CA37785E62B9E25BFBD0E2E5 /* TeamLibraryView.swift in Sources */,
+				2D791AEBCD3EEC15937B1575 /* GoalClipExporter.swift in Sources */,
+				C67EFEE111C2EF0F6AF39D3B /* TwitchViewerMonitor.swift in Sources */,
+				CD44113C4CE8B27C3A891268 /* BrandingController.swift in Sources */,
+				E37227C6A502D019A9AA2A5F /* TeamLibrary.swift in Sources */,
+				F802FA2810C5CAA9C0B84321 /* MatchCardRenderer.swift in Sources */,
+				93C84895329013FD9CEEED52 /* ScoreboardStyleRenderer.swift in Sources */,
 				568EB7A21A36B03470AABACE /* StreamHealth.swift in Sources */,
 				6C7EA97FA1FB3895D2D19693 /* StreamSettingsView.swift in Sources */,
 				057C12958B81420F73CCACE8 /* StreamingBootstrap.swift in Sources */,
+				A597E055C1C69AB737D91C18 /* TwitchAuthController.swift in Sources */,
+				F9E1B1DF05D7ACDF379C6F95 /* TwitchChatClient.swift in Sources */,
+				8A5097535E21441A3337BB03 /* TwitchConfig.swift in Sources */,
+				F7AC0A4F5A65B1A8EA821ADF /* TwitchConnectView.swift in Sources */,
 				8B3C4ACD6E08569BD1B894E3 /* VKChatClient.swift in Sources */,
 				383F5DB40E32708402F0D3D2 /* VKChatModels.swift in Sources */,
+				1BFFF8A16CB959E668D3F00E /* VKLiveAPIClient.swift in Sources */,
+				3B1EFC08FEBFA8F7127F0CD5 /* VKLiveAuthController.swift in Sources */,
+				24C814531B04E5CF8F08D620 /* VKLiveConfig.swift in Sources */,
+				AFA61C06D754A3E032ADA164 /* VKLiveConnectView.swift in Sources */,
 				4DAA62C3560893621847379F /* VKViewerMonitor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -511,7 +625,6 @@
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -525,7 +638,6 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 6.0;
@@ -546,12 +658,14 @@
 				ENABLE_TESTABILITY = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OnPitch/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = onPitch;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MARKETING_VERSION = 1.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.onpitch.app;
+				PRODUCT_BUNDLE_IDENTIFIER = ru.ementis.onpitch;
 				PRODUCT_MODULE_NAME = OnPitch;
 				PRODUCT_NAME = onPitch;
 				SDKROOT = iphoneos;
@@ -572,7 +686,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.onpitch.app.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = ru.ementis.onpitch.tests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/onPitch.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/onPitch";
@@ -616,7 +730,6 @@
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -637,7 +750,6 @@
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 6.0;
@@ -656,7 +768,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.onpitch.app.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = ru.ementis.onpitch.tests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/onPitch.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/onPitch";
@@ -676,12 +788,14 @@
 				ENABLE_TESTABILITY = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OnPitch/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = onPitch;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MARKETING_VERSION = 1.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.onpitch.app;
+				PRODUCT_BUNDLE_IDENTIFIER = ru.ementis.onpitch;
 				PRODUCT_MODULE_NAME = OnPitch;
 				PRODUCT_NAME = onPitch;
 				SDKROOT = iphoneos;
@@ -724,7 +838,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		E0C77AEAAA67E959AB5F73E3 /* XCRemoteSwiftPackageReference "HaishinKit" */ = {
+		E0C77AEAAA67E959AB5F73E3 /* XCRemoteSwiftPackageReference "HaishinKit.swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/HaishinKit/HaishinKit.swift";
 			requirement = {
@@ -737,12 +851,12 @@
 /* Begin XCSwiftPackageProductDependency section */
 		2E4734EDD3DF1137B7D07619 /* HaishinKit */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = E0C77AEAAA67E959AB5F73E3 /* XCRemoteSwiftPackageReference "HaishinKit" */;
+			package = E0C77AEAAA67E959AB5F73E3 /* XCRemoteSwiftPackageReference "HaishinKit.swift" */;
 			productName = HaishinKit;
 		};
 		ACA0DDDEA5C9A43A2AEE0744 /* RTMPHaishinKit */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = E0C77AEAAA67E959AB5F73E3 /* XCRemoteSwiftPackageReference "HaishinKit" */;
+			package = E0C77AEAAA67E959AB5F73E3 /* XCRemoteSwiftPackageReference "HaishinKit.swift" */;
 			productName = RTMPHaishinKit;
 		};
 /* End XCSwiftPackageProductDependency section */

@@ -28,7 +28,12 @@ enum OrientationHelper {
         scene.requestGeometryUpdate(preferences) { _ in }
 
         let window = scene.windows.first(where: { $0.isKeyWindow }) ?? scene.windows.first
-        window?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+        // Walk the presentation chain — the camera lives in a full-screen cover.
+        var controller = window?.rootViewController
+        while let current = controller {
+            current.setNeedsUpdateOfSupportedInterfaceOrientations()
+            controller = current.presentedViewController
+        }
 
         NotificationCenter.default.post(name: UIDevice.orientationDidChangeNotification, object: nil)
     }
@@ -39,6 +44,15 @@ enum OrientationHelper {
 
     static func lockPortrait() {
         setMask(.portrait, prefer: .portrait)
+    }
+
+    /// Home / prep screens: portrait on iPhone, free on iPad.
+    static func lockForPrep() {
+        if UIDevice.current.userInterfaceIdiom == .phone {
+            lockPortrait()
+        } else {
+            unlockAll()
+        }
     }
 
     static func unlockAll() {

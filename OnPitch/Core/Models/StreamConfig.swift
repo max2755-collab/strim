@@ -62,6 +62,10 @@ enum StreamFPS: Int, CaseIterable, Identifiable, Codable, Sendable {
     var displayName: String { "\(rawValue) fps" }
 
     var frameRate: Float64 { Float64(rawValue) }
+
+    static func min(_ lhs: StreamFPS, _ rhs: StreamFPS) -> StreamFPS {
+        lhs.rawValue <= rhs.rawValue ? lhs : rhs
+    }
 }
 
 enum StreamOrientation: String, CaseIterable, Identifiable, Codable, Sendable {
@@ -73,9 +77,9 @@ enum StreamOrientation: String, CaseIterable, Identifiable, Codable, Sendable {
 
     var displayName: String {
         switch self {
-        case .auto: return "Auto"
-        case .portrait: return "Portrait"
-        case .landscape: return "Landscape"
+        case .auto: return String(localized: "Auto")
+        case .portrait: return String(localized: "Portrait")
+        case .landscape: return String(localized: "Landscape")
         }
     }
 }
@@ -138,18 +142,20 @@ struct StreamConfig: Codable, Equatable, Sendable {
     }
 
     init(from decoder: Decoder) throws {
+        // Missing keys (older app versions) fall back to the defaults.
+        let d = StreamConfig.default
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        resolution = try c.decodeIfPresent(StreamResolution.self, forKey: .resolution) ?? .p720
-        fps = try c.decodeIfPresent(StreamFPS.self, forKey: .fps) ?? .fps30
-        videoBitrateKbps = try c.decodeIfPresent(Int.self, forKey: .videoBitrateKbps) ?? 2500
-        audioBitrateKbps = try c.decodeIfPresent(Int.self, forKey: .audioBitrateKbps) ?? 128
-        useFrontCamera = try c.decodeIfPresent(Bool.self, forKey: .useFrontCamera) ?? false
-        isMuted = try c.decodeIfPresent(Bool.self, forKey: .isMuted) ?? false
-        orientation = try c.decodeIfPresent(StreamOrientation.self, forKey: .orientation) ?? .landscape
-        adaptiveBitrate = try c.decodeIfPresent(Bool.self, forKey: .adaptiveBitrate) ?? true
-        recordLocally = try c.decodeIfPresent(Bool.self, forKey: .recordLocally) ?? false
-        dualCameraEnabled = try c.decodeIfPresent(Bool.self, forKey: .dualCameraEnabled) ?? false
-        centerStageEnabled = try c.decodeIfPresent(Bool.self, forKey: .centerStageEnabled) ?? true
+        resolution = try c.decodeIfPresent(StreamResolution.self, forKey: .resolution) ?? d.resolution
+        fps = try c.decodeIfPresent(StreamFPS.self, forKey: .fps) ?? d.fps
+        videoBitrateKbps = try c.decodeIfPresent(Int.self, forKey: .videoBitrateKbps) ?? d.videoBitrateKbps
+        audioBitrateKbps = try c.decodeIfPresent(Int.self, forKey: .audioBitrateKbps) ?? d.audioBitrateKbps
+        useFrontCamera = try c.decodeIfPresent(Bool.self, forKey: .useFrontCamera) ?? d.useFrontCamera
+        isMuted = try c.decodeIfPresent(Bool.self, forKey: .isMuted) ?? d.isMuted
+        orientation = try c.decodeIfPresent(StreamOrientation.self, forKey: .orientation) ?? d.orientation
+        adaptiveBitrate = try c.decodeIfPresent(Bool.self, forKey: .adaptiveBitrate) ?? d.adaptiveBitrate
+        recordLocally = try c.decodeIfPresent(Bool.self, forKey: .recordLocally) ?? d.recordLocally
+        dualCameraEnabled = try c.decodeIfPresent(Bool.self, forKey: .dualCameraEnabled) ?? d.dualCameraEnabled
+        centerStageEnabled = try c.decodeIfPresent(Bool.self, forKey: .centerStageEnabled) ?? d.centerStageEnabled
     }
 
     func encodeSize(isLandscape: Bool) -> CGSize {
@@ -173,16 +179,14 @@ enum DeviceCapabilities {
     }
 
     /// Front camera reports a Center Stage–capable format (iPhone 17 / Air / 17 Pro family, etc.).
-    static var supportsCenterStage: Bool {
-        guard let front = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front) else {
-            return false
-        }
+    /// Hardware never changes at runtime — scan the format list once.
+    static let supportsCenterStage: Bool = {
+        guard let front = AVCaptureDevice.wideAngle(.front) else { return false }
         return front.formats.contains { $0.isCenterStageSupported }
-    }
+    }()
 
     static func supports(resolution: StreamResolution, fps: StreamFPS, front: Bool) -> Bool {
-        let position: AVCaptureDevice.Position = front ? .front : .back
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position) else {
+        guard let device = AVCaptureDevice.wideAngle(front ? .front : .back) else {
             return false
         }
         let size = resolution.videoSize
@@ -203,5 +207,45 @@ enum DeviceCapabilities {
 
     static var supports60FPS: Bool {
         supports(resolution: .p1080, fps: .fps60, front: false)
+    }
+}
+
+extension AVCaptureDevice {
+    /// The built-in wide-angle camera on the given side (the one onPitch streams from).
+    static func wideAngle(_ position: AVCaptureDevice.Position) -> AVCaptureDevice? {
+        AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position)
+    }
+}
+
+/// Rough "will this last the match?" numbers for pre-flight. Deliberately pessimistic:
+/// better a warning at kick-off than a dead phone in the second half.
+enum MatchResourceEstimate {
+    /// Two halves plus half-time and a little warm-up on air.
+    static func matchMinutes(halfLength: Int) -> Int {
+        halfLength * 2 + 15
+    }
+
+    /// Battery % per hour while live (screen on, camera, encoder, radio).
+    static func batteryPercentPerHour(config: StreamConfig) -> Double {
+        var rate: Double
+        switch config.resolution {
+        case .p720: rate = 22
+        case .p1080: rate = 30
+        case .p1440, .p2160: rate = 40
+        }
+        if config.fps == .fps60 { rate += 8 }
+        if config.recordLocally { rate += 6 }
+        if config.dualCameraEnabled { rate += 10 }
+        return rate
+    }
+
+    static func batteryPercentNeeded(config: StreamConfig, matchMinutes: Int) -> Int {
+        Int((batteryPercentPerHour(config: config) * Double(matchMinutes) / 60).rounded(.up))
+    }
+
+    /// Local recording size: video + audio bitrate over the whole match.
+    static func recordingBytes(config: StreamConfig, matchMinutes: Int) -> Int64 {
+        let bytesPerSecond = Int64(config.videoBitrateKbps + config.audioBitrateKbps) * 1000 / 8
+        return bytesPerSecond * Int64(matchMinutes * 60)
     }
 }

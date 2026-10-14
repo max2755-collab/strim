@@ -21,23 +21,25 @@ enum StreamHealth: Equatable, Sendable {
         case .idle:
             return "—"
         case .connecting:
-            return "CONNECTING"
+            return String(localized: "CONNECTING")
         case .healthy(let kbps, let fps):
             if fps > 0 { return "\(kbps) KB/s · \(fps) fps" }
             return "\(kbps) KB/s"
         case .degraded(let kbps, let fps):
-            if fps > 0 { return "WEAK \(kbps) KB/s · \(fps) fps" }
-            return "WEAK \(kbps) KB/s"
+            if fps > 0 {
+                return String(localized: "WEAK \(kbps) KB/s · \(fps) fps")
+            }
+            return String(localized: "WEAK \(kbps) KB/s")
         case .audioOnly(let kbps):
-            return "AUDIO ONLY \(kbps) KB/s"
+            return String(localized: "AUDIO ONLY \(kbps) KB/s")
         case .stalled:
-            return "STALLED"
+            return String(localized: "STALLED")
         case .congested(let kbps, let queueKB):
-            return "BUFFERING \(kbps) KB/s · \(queueKB) KB"
+            return String(localized: "BUFFERING \(kbps) KB/s · \(queueKB) KB")
         case .reconnecting:
-            return "RECONNECTING"
+            return String(localized: "RECONNECTING")
         case .offline:
-            return "NO NETWORK"
+            return String(localized: "NO NETWORK")
         }
     }
 
@@ -54,17 +56,17 @@ enum StreamHealth: Equatable, Sendable {
     var detailHint: String? {
         switch self {
         case .audioOnly:
-            return "Looks like audio only — video encoder may be stalled. Try 720p or cool the phone."
+            return String(localized: "Looks like audio only — video encoder may be stalled. Try 720p or cool the phone.")
         case .stalled:
-            return "No data leaving the phone — check Wi‑Fi/cellular or the ingest URL."
+            return String(localized: "No data leaving the phone — check Wi‑Fi/cellular or the ingest URL.")
         case .congested:
-            return "Upload can't keep up — lower bitrate or switch to a stronger network."
+            return String(localized: "Upload can't keep up — lower bitrate or switch to a stronger network.")
         case .degraded:
-            return "Upload is well below the target bitrate — picture may look soft or choppy."
+            return String(localized: "Upload is well below the target bitrate — picture may look soft or choppy.")
         case .offline:
-            return "Device is offline."
+            return String(localized: "Device is offline.")
         case .reconnecting:
-            return "Lost the RTMP connection — retrying…"
+            return String(localized: "Lost the RTMP connection — retrying…")
         default:
             return nil
         }

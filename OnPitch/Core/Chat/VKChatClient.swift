@@ -22,13 +22,26 @@ final class VKChatClient: ObservableObject {
     private var subscribedChannels: [String] = []
 
     private let maxMessages = 80
+    private static let idleTimeout: TimeInterval = 75
     private let log = Logger(subsystem: "app.onpitch", category: "VKChat")
+
+    /// When set (VK Live DevAPI sign-in), chat uses the official websocket token.
+    var accessTokenProvider: (() async throws -> String?)?
+
+    @Published private(set) var usingOfficialAuth = false
+    @Published var composeText = ""
+    @Published private(set) var isSending = false
+    @Published private(set) var sendError: String?
+
+    var canSendMessages: Bool {
+        usingOfficialAuth && (state == .connected || state == .connecting) && currentSlug != nil
+    }
 
     func start(channelSlug: String) {
         let slug = VKChatAPI.normalizeSlug(channelSlug)
         guard !slug.isEmpty else {
-            state = .error("Укажи nick канала, например Near_You")
-            lastDetail = "Нет nick / URL канала VK"
+            state = .error(String(localized: "Enter a channel nick, e.g. Near_You"))
+            lastDetail = String(localized: "No VK channel nick / URL")
             return
         }
 
@@ -41,7 +54,7 @@ final class VKChatClient: ObservableObject {
         currentSlug = slug
         reconnectAttempt = 0
         state = .connecting
-        lastDetail = "Connecting to \(slug)…"
+        lastDetail = String(localized: "Connecting to \(slug)…")
         subscribedLabel = nil
         connectGeneration += 1
         let generation = connectGeneration
@@ -54,7 +67,7 @@ final class VKChatClient: ObservableObject {
     /// Manual reconnect from the Live overlay.
     func reconnect() {
         guard let slug = currentSlug, !slug.isEmpty else {
-            state = .error("Нет канала для переподключения")
+            state = .error(String(localized: "No channel to reconnect"))
             return
         }
         reconnectAttempt += 1
@@ -62,7 +75,7 @@ final class VKChatClient: ObservableObject {
         shouldRun = true
         currentSlug = slug
         state = .connecting
-        lastDetail = "Ручной reconnect…"
+        lastDetail = String(localized: "Manual reconnect…")
         connectGeneration += 1
         let generation = connectGeneration
         Task {
@@ -103,21 +116,55 @@ final class VKChatClient: ObservableObject {
         seenMessageIDs.removeAll()
     }
 
+    /// Send chat as the signed-in DevAPI user (requires official token).
+    func sendCompose() async {
+        let text = composeText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, let slug = currentSlug, !isSending else { return }
+        guard let provider = accessTokenProvider else {
+            sendError = String(localized: "Sign in to VK Live to send chat")
+            return
+        }
+        isSending = true
+        sendError = nil
+        defer { isSending = false }
+        do {
+            guard let token = try await provider(), !token.isEmpty else {
+                sendError = String(localized: "Sign in to VK Live to send chat")
+                return
+            }
+            try await VKLiveAPIClient.sendChatMessage(channelSlug: slug, text: text, accessToken: token)
+            composeText = ""
+            // Optimistic local echo until PubSub round-trips.
+            let echo = ChatMessage(
+                id: "local-\(UUID().uuidString)",
+                author: String(localized: "You"),
+                text: text,
+                createdAt: Date()
+            )
+            messages.append(echo)
+            messages.keepNewest(maxMessages)
+        } catch {
+            sendError = error.localizedDescription
+            log.error("Chat send failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     // MARK: - Connection
 
     private func connect(slug: String, generation: Int) async {
         do {
-            let token = try await fetchGuestToken()
+            let auth = try await resolveAuthToken(for: slug)
+            usingOfficialAuth = auth.isOfficial
             guard shouldRun, generation == connectGeneration else { return }
 
-            let resolved = try await resolveChannel(slug: slug)
+            let resolved = try await resolveChannel(slug: slug, accessToken: auth.accessToken)
             guard shouldRun, generation == connectGeneration else { return }
 
             channelTitle = resolved.title
             subscribedChannels = resolved.subscribeChannels
             subscribedLabel = resolved.subscribeChannels.first
             lastDetail = "Subscribe \(resolved.subscribeChannels.joined(separator: ", "))"
-            log.info("Resolved \(slug, privacy: .public) → \(resolved.subscribeChannels.joined(separator: ","), privacy: .public)")
+            log.info("Resolved \(slug, privacy: .public) → \(resolved.subscribeChannels.joined(separator: ","), privacy: .public) official=\(auth.isOfficial)")
 
             let socket = ChatSocket()
             self.socket = socket
@@ -126,7 +173,7 @@ final class VKChatClient: ObservableObject {
             let connectID = nextID()
             try await socket.sendJSON([
                 "connect": [
-                    "token": token,
+                    "token": auth.websocketToken,
                     "name": "js"
                 ],
                 "id": connectID
@@ -154,7 +201,7 @@ final class VKChatClient: ObservableObject {
             state = .connected
             reconnectAttempt = 0
             lastDetail = messages.isEmpty
-                ? "Онлайн · ждём чат (\(subscribedLabel ?? "channel-chat"))"
+                ? String(localized: "Online · waiting for chat (\(subscribedLabel ?? "channel-chat"))")
                 : "\(messages.count) msg · \(resolved.title)"
             startReceiveLoop(socket: socket, generation: generation)
             startHistoryWatchdog(slug: slug, generation: generation)
@@ -175,7 +222,7 @@ final class VKChatClient: ObservableObject {
         let deadline = Date().addingTimeInterval(timeoutSeconds)
 
         while Date() < deadline {
-            let text = try await socket.receiveText()
+            let text = try await socket.receiveText(timeout: max(0.5, deadline.timeIntervalSinceNow))
             if text == "{}" {
                 try await socket.sendRaw("{}")
                 continue
@@ -246,7 +293,8 @@ final class VKChatClient: ObservableObject {
             guard let self else { return }
             while self.shouldRun, generation == self.connectGeneration, !Task.isCancelled {
                 do {
-                    let text = try await socket.receiveText()
+                    // Server pings every ~25 s; silence this long means a dead socket.
+                    let text = try await socket.receiveText(timeout: Self.idleTimeout)
                     if text == "{}" {
                         try await socket.sendRaw("{}")
                         continue
@@ -331,6 +379,10 @@ final class VKChatClient: ObservableObject {
         guard !textBody.isEmpty else { return }
 
         seenMessageIDs.insert(messageID)
+        // Our own message came back through PubSub — replace the optimistic echo.
+        if let echo = messages.firstIndex(where: { $0.id.hasPrefix("local-") && $0.text == textBody }) {
+            messages.remove(at: echo)
+        }
         let message = ChatMessage(
             id: messageID,
             author: author,
@@ -339,10 +391,8 @@ final class VKChatClient: ObservableObject {
         )
         messages.append(message)
         messages.sort { $0.createdAt < $1.createdAt }
-        if messages.count > maxMessages {
-            let removed = messages.prefix(messages.count - maxMessages)
-            for item in removed { seenMessageIDs.remove(item.id) }
-            messages.removeFirst(messages.count - maxMessages)
+        for item in messages.keepNewest(maxMessages) {
+            seenMessageIDs.remove(item.id)
         }
         lastDetail = "\(messages.count) msg"
     }
@@ -455,7 +505,45 @@ final class VKChatClient: ObservableObject {
         let subscribeChannels: [String]
     }
 
-    private func resolveChannel(slug: String) async throws -> ResolvedChannel {
+    private struct AuthBundle {
+        let websocketToken: String
+        let accessToken: String?
+        let isOfficial: Bool
+    }
+
+    private func resolveAuthToken(for slug: String) async throws -> AuthBundle {
+        if let provider = accessTokenProvider {
+            do {
+                if let access = try await provider(), !access.isEmpty,
+                   let ws = try? await VKLiveAPIClient.fetchWebsocketToken(accessToken: access) {
+                    return AuthBundle(websocketToken: ws, accessToken: access, isOfficial: true)
+                }
+            } catch {
+                log.debug("DevAPI chat token unavailable: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        let guest = try await fetchGuestToken()
+        return AuthBundle(websocketToken: guest, accessToken: nil, isOfficial: false)
+    }
+
+    private func resolveChannel(slug: String, accessToken: String? = nil) async throws -> ResolvedChannel {
+        // Prefer DevAPI channel metadata when signed in (includes websocket channel names).
+        if let accessToken,
+           let channel = try? await VKLiveAPIClient.fetchChannel(channelURL: slug, accessToken: accessToken) {
+            var channels: [String] = []
+            if let chat = channel.webSocketChannels?.chat, !chat.isEmpty {
+                channels.append(chat)
+            }
+            if let points = channel.webSocketChannels?.channelPoints, !points.isEmpty {
+                channels.append(points)
+            }
+            if channels.isEmpty {
+                // Fallback classic name if API omitted ws channels.
+                channels = ["channel-chat:\(channel.nick)"]
+            }
+            return ResolvedChannel(id: 0, title: channel.nick, subscribeChannels: channels)
+        }
+
         // Stream payload has the real Centrifugo name: `channel-chat:{id}`.
         if let stream = try? await fetchStream(slug: slug) {
             let blog = try? await fetchBlog(slug: slug)
@@ -497,11 +585,6 @@ final class VKChatClient: ObservableObject {
             return ResolvedChannel(id: id, title: title, subscribeChannels: ["channel-chat:\(id)"])
         }
 
-        let lower = slug.lowercased()
-        if lower != slug {
-            return try await resolveChannel(slug: lower)
-        }
-
         if let hash = slug.split(separator: "#").last,
            let numeric = Int(hash),
            slug.contains("#") {
@@ -512,6 +595,11 @@ final class VKChatClient: ObservableObject {
             )
         }
 
+        let lower = slug.lowercased()
+        if lower != slug {
+            return try await resolveChannel(slug: lower, accessToken: accessToken)
+        }
+
         throw VKChatError.channelNotFound(slug)
     }
 
@@ -520,31 +608,24 @@ final class VKChatClient: ObservableObject {
         if let token = try? await fetchConnectToken() {
             return token
         }
-        return try await fetchTokenFromAppConfig()
+        do {
+            return try await fetchTokenFromAppConfig()
+        } catch {
+            throw VKChatError.tokenFetchFailed
+        }
     }
 
     private func fetchConnectToken() async throws -> String {
         guard let url = URL(string: "\(VKChatAPI.apiHost)/v1/ws/connect") else {
             throw VKChatError.tokenFetchFailed
         }
-        var request = URLRequest(url: url)
-        request.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
-        request.setValue("https://live.vkvideo.ru", forHTTPHeaderField: "Origin")
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw VKChatError.tokenFetchFailed
-        }
         struct TokenResponse: Decodable { let token: String }
+        let data = try await VKChatAPI.data(for: VKChatAPI.webRequest(url))
         return try JSONDecoder().decode(TokenResponse.self, from: data).token
     }
 
     private func fetchTokenFromAppConfig() async throws -> String {
-        var request = URLRequest(url: VKChatAPI.homeURL)
-        request.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw VKChatError.tokenFetchFailed
-        }
+        let data = try await VKChatAPI.data(for: VKChatAPI.webRequest(VKChatAPI.homeURL, sendOrigin: false))
         guard let html = String(data: data, encoding: .utf8),
               let json = extractAppConfigJSON(from: html),
               let configData = json.data(using: .utf8)
@@ -564,18 +645,22 @@ final class VKChatClient: ObservableObject {
         return nil
     }
 
-    private func fetchChannelInfo(slug: String) async throws -> VKChannelInfoResponse {
-        guard let url = VKChatAPI.channelInfoURL(slug: slug) else {
+    /// Public JSON under `/v1/blog/{slug}…`; non-2xx → `channelNotFound`.
+    private func fetchBlogJSON<T: Decodable>(_ type: T.Type, slug: String, path: String = "") async throws -> T {
+        guard let url = VKChatAPI.blogURL(slug: slug, path: path) else {
             throw VKChatError.invalidChannel
         }
-        var request = URLRequest(url: url)
-        request.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
-        request.setValue("https://live.vkvideo.ru", forHTTPHeaderField: "Origin")
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+        let data: Data
+        do {
+            data = try await VKChatAPI.data(for: VKChatAPI.webRequest(url))
+        } catch is VKChatAPI.HTTPStatusError {
             throw VKChatError.channelNotFound(slug)
         }
-        return try JSONDecoder().decode(VKChannelInfoResponse.self, from: data)
+        return try JSONDecoder().decode(type, from: data)
+    }
+
+    private func fetchChannelInfo(slug: String) async throws -> VKChannelInfoResponse {
+        try await fetchBlogJSON(VKChannelInfoResponse.self, slug: slug, path: "/public_video_stream/chat/user/")
     }
 
     private struct BlogResponse: Decodable {
@@ -627,47 +712,17 @@ final class VKChatClient: ObservableObject {
         title: String,
         publicWebSocketChannel: String?
     ) {
-        let encoded = slug.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? slug
-        guard let url = URL(string: "\(VKChatAPI.apiHost)/v1/blog/\(encoded)") else {
-            throw VKChatError.invalidChannel
-        }
-        var request = URLRequest(url: url)
-        request.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
-        request.setValue("https://live.vkvideo.ru", forHTTPHeaderField: "Origin")
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw VKChatError.channelNotFound(slug)
-        }
-        let blog = try JSONDecoder().decode(BlogResponse.self, from: data)
+        let blog = try await fetchBlogJSON(BlogResponse.self, slug: slug)
         return (blog.ownerID, blog.resolvedTitle, blog.publicWebSocketChannel)
     }
 
     private func fetchStream(slug: String) async throws -> StreamResponse {
-        let encoded = slug.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? slug
-        guard let url = URL(string: "\(VKChatAPI.apiHost)/v1/blog/\(encoded)/public_video_stream") else {
-            throw VKChatError.invalidChannel
-        }
-        var request = URLRequest(url: url)
-        request.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
-        request.setValue("https://live.vkvideo.ru", forHTTPHeaderField: "Origin")
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw VKChatError.channelNotFound(slug)
-        }
-        return try JSONDecoder().decode(StreamResponse.self, from: data)
+        try await fetchBlogJSON(StreamResponse.self, slug: slug, path: "/public_video_stream")
     }
 
     private func loadRecentHistory(slug: String) async {
-        let encoded = slug.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? slug
-        guard let url = URL(string: "\(VKChatAPI.apiHost)/v1/blog/\(encoded)/public_video_stream/chat?limit=30") else {
-            return
-        }
-        var request = URLRequest(url: url)
-        request.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
-        request.setValue("https://live.vkvideo.ru", forHTTPHeaderField: "Origin")
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
-              let http = response as? HTTPURLResponse,
-              (200..<300).contains(http.statusCode),
+        guard let url = VKChatAPI.blogURL(slug: slug, path: "/public_video_stream/chat?limit=30"),
+              let data = try? await VKChatAPI.data(for: VKChatAPI.webRequest(url)),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let items = root["data"] as? [[String: Any]]
         else { return }
@@ -693,15 +748,15 @@ final class VKChatClient: ObservableObject {
         var errorDescription: String? {
             switch self {
             case .tokenFetchFailed:
-                return "Не удалось получить токен VK Live"
+                return String(localized: "Could not fetch VK Live token")
             case .invalidChannel:
-                return "Некорректный канал VK"
+                return String(localized: "Invalid VK channel")
             case .channelNotFound(let slug):
-                return "Канал «\(slug)» не найден. Нужен nick из URL: live.vkvideo.ru/NICK"
+                return String(localized: "Channel “\(slug)” not found. Use the nick from live.vkvideo.ru/NICK")
             case .notConnected:
-                return "Чат не подключён"
+                return String(localized: "Chat is not connected")
             case .timeout:
-                return "Таймаут подключения к чату VK"
+                return String(localized: "VK chat connection timed out")
             case .protocolError(let message):
                 return message
             }
@@ -714,6 +769,7 @@ final class VKChatClient: ObservableObject {
 private actor ChatSocket {
     private var session: URLSession?
     private var task: URLSessionWebSocketTask?
+    private var timedOut = false
 
     func open() async throws {
         let config = URLSessionConfiguration.default
@@ -721,10 +777,7 @@ private actor ChatSocket {
         let session = URLSession(configuration: config)
         self.session = session
 
-        var request = URLRequest(url: VKChatAPI.websocketURL)
-        request.setValue("https://live.vkvideo.ru", forHTTPHeaderField: "Origin")
-        request.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
-        let task = session.webSocketTask(with: request)
+        let task = session.webSocketTask(with: VKChatAPI.webRequest(VKChatAPI.websocketURL))
         self.task = task
         task.resume()
     }
@@ -740,9 +793,24 @@ private actor ChatSocket {
         try await task.send(.string(text))
     }
 
-    func receiveText() async throws -> String {
+    /// `receive()` ignores Task cancellation, so a timeout cancels the socket itself.
+    func receiveText(timeout: TimeInterval) async throws -> String {
         guard let task else { throw VKChatClient.VKChatError.notConnected }
-        let message = try await task.receive()
+        timedOut = false
+        let watchdog = Task {
+            try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            self.timedOut = true
+            task.cancel(with: .goingAway, reason: nil)
+        }
+        defer { watchdog.cancel() }
+
+        let message: URLSessionWebSocketTask.Message
+        do {
+            message = try await task.receive()
+        } catch {
+            throw timedOut ? VKChatClient.VKChatError.timeout : error
+        }
         switch message {
         case .string(let text):
             return text

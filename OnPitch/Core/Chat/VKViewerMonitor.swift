@@ -108,22 +108,19 @@ final class VKViewerMonitor: ObservableObject {
     }
 
     private func fetchSnapshot(slug: String) async throws -> Snapshot {
-        let encoded = slug.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? slug
-        guard let url = URL(string: "\(VKChatAPI.apiHost)/v1/blog/\(encoded)/public_video_stream") else {
+        guard let url = VKChatAPI.blogURL(slug: slug, path: "/public_video_stream") else {
             throw MonitorError.badURL
         }
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 12
-        request.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
-        request.setValue("https://live.vkvideo.ru", forHTTPHeaderField: "Origin")
-        request.setValue("https://live.vkvideo.ru/", forHTTPHeaderField: "Referer")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else { throw MonitorError.badResponse }
-        if http.statusCode == 404 {
-            return Snapshot(isOnline: false, viewers: 0, hlsURL: nil)
+        let request = VKChatAPI.webRequest(url, referer: VKChatAPI.origin + "/", timeout: 12)
+        let data: Data
+        do {
+            data = try await VKChatAPI.data(for: request)
+        } catch let error as VKChatAPI.HTTPStatusError {
+            if error.code == 404 {
+                return Snapshot(isOnline: false, viewers: 0, hlsURL: nil)
+            }
+            throw MonitorError.http(error.code)
         }
-        guard (200..<300).contains(http.statusCode) else { throw MonitorError.http(http.statusCode) }
 
         guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw MonitorError.badResponse
@@ -139,25 +136,22 @@ final class VKViewerMonitor: ObservableObject {
         return Snapshot(isOnline: isOnline || hls != nil, viewers: viewers, hlsURL: hls)
     }
 
-    private func fetchPlaylistFingerprint(from url: URL) async throws -> String? {
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 10
-        request.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
-        request.setValue("https://live.vkvideo.ru/", forHTTPHeaderField: "Referer")
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+    private func fetchPlaylistFingerprint(from url: URL, depth: Int = 0) async throws -> String? {
+        let request = VKChatAPI.webRequest(url, sendOrigin: false, referer: VKChatAPI.origin + "/", timeout: 10)
+        guard let data = try? await VKChatAPI.data(for: request),
               let text = String(data: data, encoding: .utf8)
         else {
             throw MonitorError.hlsUnavailable
         }
 
         // Master playlist → follow first media playlist.
-        if text.contains("#EXT-X-STREAM-INF") {
+        // Depth guard: a master that points at itself must not recurse forever.
+        if text.contains("#EXT-X-STREAM-INF"), depth < 2 {
             let lines = text.split(whereSeparator: \.isNewline).map(String.init)
             for (idx, line) in lines.enumerated() where line.hasPrefix("#EXT-X-STREAM-INF") {
                 let next = lines.dropFirst(idx + 1).first { !$0.hasPrefix("#") && !$0.isEmpty }
                 if let next, let child = URL(string: next, relativeTo: url)?.absoluteURL {
-                    return try await fetchPlaylistFingerprint(from: child)
+                    return try await fetchPlaylistFingerprint(from: child, depth: depth + 1)
                 }
             }
         }
@@ -274,11 +268,11 @@ enum VKViewerStatus: Equatable, Sendable {
         case .offline:
             return "VK OFF"
         case .noPlayable(let viewers):
-            return "VK NO VIDEO · \(viewers)"
+            return "NO HLS · \(viewers)"
         case .ok(let viewers):
-            return "VK OK · \(viewers)"
+            return "\(viewers)"
         case .frozen(let viewers):
-            return "VK FROZEN · \(viewers)"
+            return "FROZEN · \(viewers)"
         case .error:
             return "VK ?"
         }

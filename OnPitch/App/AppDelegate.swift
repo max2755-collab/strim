@@ -1,8 +1,9 @@
 import UIKit
 
 final class AppDelegate: NSObject, UIApplicationDelegate {
-    /// Default to landscape for horizontal football streaming.
-    static var orientationLock: UIInterfaceOrientationMask = .landscape
+    /// Prep screens are portrait on iPhone; the camera screen locks landscape itself.
+    /// (iPad is unlocked by `OrientationHelper.lockForPrep()` when the home screen appears.)
+    static var orientationLock: UIInterfaceOrientationMask = .portrait
 
     func application(
         _ application: UIApplication,
@@ -17,10 +18,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     ) -> Bool {
         // Warm RTMP factories during launch so Live isn't blocked on first open.
         StreamingBootstrap.shared.startIfNeeded()
-        // Ask the system to prefer landscape as soon as the app launches.
-        DispatchQueue.main.async {
-            OrientationHelper.lockLandscape()
-        }
         return true
     }
 }

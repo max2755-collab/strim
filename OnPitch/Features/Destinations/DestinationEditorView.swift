@@ -2,7 +2,6 @@ import SwiftUI
 
 struct DestinationEditorView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     let destination: StreamDestination?
     let onSave: (StreamDestination) throws -> Void
@@ -13,9 +12,10 @@ struct DestinationEditorView: View {
     @State private var streamKey: String = ""
     @State private var isEnabled = true
     @State private var vkChannelSlug = ""
+    @State private var twitchChannelLogin = ""
     @State private var showChatOverlay = true
+    @State private var useHEVC = false
     @State private var errorMessage: String?
-    @State private var showKey = false
 
     private var isEditing: Bool { destination != nil }
 
@@ -37,7 +37,7 @@ struct DestinationEditorView: View {
                         }
                     }
                 }
-                .listRowBackground(OnPitchTheme.panelElevated)
+                .listRowBackground(OnPitchTheme.panel)
 
                 Section("Connection") {
                     TextField("Name", text: $name)
@@ -46,28 +46,14 @@ struct DestinationEditorView: View {
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
 
-                    HStack {
-                        Group {
-                            if showKey {
-                                TextField("Stream key", text: $streamKey)
-                            } else {
-                                SecureField("Stream key", text: $streamKey)
-                            }
-                        }
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-
-                        Button {
-                            showKey.toggle()
-                        } label: {
-                            Image(systemName: showKey ? "eye.slash" : "eye")
-                                .foregroundStyle(OnPitchTheme.textSecondary)
-                        }
-                        .buttonStyle(.borderless)
-                        .accessibilityLabel(showKey ? "Hide stream key" : "Show stream key")
-                    }
+                    OnPitchSecretField(
+                        title: String(localized: "Stream key"),
+                        text: $streamKey,
+                        showLabel: String(localized: "Show stream key"),
+                        hideLabel: String(localized: "Hide stream key")
+                    )
                 }
-                .listRowBackground(OnPitchTheme.panelElevated)
+                .listRowBackground(OnPitchTheme.panel)
 
                 if preset == .vk {
                     Section {
@@ -79,11 +65,34 @@ struct DestinationEditorView: View {
                     } header: {
                         Text("VK Chat")
                     } footer: {
-                        Text("Nick from URL: live.vkvideo.ru/Near_You → Near_You. Chat is read-only.")
+                        Text("URL path only, e.g. channel38363194. RTMP stays above. Sign in via Connect VK Live for sending.")
                             .foregroundStyle(OnPitchTheme.textTertiary)
                     }
-                    .listRowBackground(OnPitchTheme.panelElevated)
+                    .listRowBackground(OnPitchTheme.panel)
                 }
+
+                if preset == .twitch {
+                    Section {
+                        TextField("Twitch channel login", text: $twitchChannelLogin)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        Toggle("Show chat on Live screen", isOn: $showChatOverlay)
+                    } header: {
+                        Text("Twitch Chat")
+                    } footer: {
+                        Text("Channel login from twitch.tv/name → name. Sign in via Connect Twitch for chat.")
+                            .foregroundStyle(OnPitchTheme.textTertiary)
+                    }
+                    .listRowBackground(OnPitchTheme.panel)
+                }
+
+                Section {
+                    Toggle("H.265 (HEVC)", isOn: $useHEVC)
+                } footer: {
+                    Text("Sharper picture at the same bitrate. Only for platforms that accept H.265 over RTMP (YouTube). If the stream doesn't start, turn it off.")
+                        .foregroundStyle(OnPitchTheme.textTertiary)
+                }
+                .listRowBackground(OnPitchTheme.panel)
 
                 Section {
                     Toggle("Include in Go Live", isOn: $isEnabled)
@@ -97,24 +106,16 @@ struct DestinationEditorView: View {
                     }
                     .foregroundStyle(OnPitchTheme.textTertiary)
                 }
-                .listRowBackground(OnPitchTheme.panelElevated)
+                .listRowBackground(OnPitchTheme.panel)
 
                 if let errorMessage {
-                    Section {
-                        Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(OnPitchTheme.bad)
-                            .font(.footnote)
-                    }
-                    .listRowBackground(OnPitchTheme.panelElevated)
+                    OnPitchFormError(message: errorMessage)
                 }
             }
-            .scrollContentBackground(.hidden)
-            .background(OnPitchScreenBackground())
-            .tint(OnPitchTheme.live)
-            .navigationTitle(isEditing ? "Edit destination" : "New destination")
-            .navigationBarTitleDisplayMode(.inline)
-            .frame(maxWidth: horizontalSizeClass == .regular ? 640 : .infinity)
-            .frame(maxWidth: .infinity)
+            .onPitchFormStyle(
+                title: isEditing ? String(localized: "Edit destination") : String(localized: "New destination")
+            )
+            .onPitchReadableColumn()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -132,7 +133,9 @@ struct DestinationEditorView: View {
                     streamKey = destination.streamKey
                     isEnabled = destination.isEnabled
                     vkChannelSlug = destination.vkChannelSlug
+                    twitchChannelLogin = destination.twitchChannelLogin
                     showChatOverlay = destination.showChatOverlay
+                    useHEVC = destination.useHEVC
                 } else {
                     name = DestinationPreset.custom.displayName
                     url = DestinationPreset.custom.suggestedURL
@@ -147,21 +150,26 @@ struct DestinationEditorView: View {
         let trimmedURL = url.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedKey = streamKey.trimmingCharacters(in: .whitespacesAndNewlines)
         let slug = VKChatAPI.normalizeSlug(vkChannelSlug)
+        let twitchLogin = TwitchChatClient.normalizeChannel(twitchChannelLogin)
 
         guard !trimmedName.isEmpty else {
-            errorMessage = "Name is required"
+            errorMessage = String(localized: "Name is required")
             return
         }
         guard StreamDestination.validateURL(trimmedURL) else {
-            errorMessage = "URL must start with rtmp:// or rtmps://"
+            errorMessage = String(localized: "URL must start with rtmp:// or rtmps://")
             return
         }
         guard !trimmedKey.isEmpty else {
-            errorMessage = "Stream key is required"
+            errorMessage = String(localized: "Stream key is required")
             return
         }
         if preset == .vk, showChatOverlay, slug.isEmpty {
-            errorMessage = "Enter VK channel slug to show chat, or turn off the overlay"
+            errorMessage = String(localized: "Enter VK channel slug to show chat, or turn off the overlay")
+            return
+        }
+        if preset == .twitch, showChatOverlay, twitchLogin.isEmpty {
+            errorMessage = String(localized: "Enter Twitch channel login to show chat, or turn off the overlay")
             return
         }
 
@@ -173,11 +181,13 @@ struct DestinationEditorView: View {
             streamKey: trimmedKey,
             isEnabled: isEnabled,
             vkChannelSlug: preset == .vk ? slug : "",
-            showChatOverlay: preset == .vk ? showChatOverlay : false
+            twitchChannelLogin: preset == .twitch ? twitchLogin : "",
+            showChatOverlay: (preset == .vk || preset == .twitch) ? showChatOverlay : false,
+            useHEVC: useHEVC
         )
 
         guard result.makeIngestURL() != nil else {
-            errorMessage = "Could not build a valid ingest URL"
+            errorMessage = String(localized: "Could not build a valid ingest URL")
             return
         }
 
