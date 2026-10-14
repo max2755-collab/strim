@@ -98,7 +98,7 @@
 		D5E660A798C2C9898BBB0FAD /* AdaptiveBitRateStrategy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptiveBitRateStrategy.swift; sourceTree = "<group>"; };
 		D9EF6120EF9F5D8DFEF51E4D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		E1D98113E9D1BD571E794B36 /* VKChatAPITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VKChatAPITests.swift; sourceTree = "<group>"; };
-		E30150D23B26F482DB3157A7 /* OnPitchTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OnPitchTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		E30150D23B26F482DB3157A7 /* OnPitchTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OnPitchTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		EA730598FE96CD3AC0632A80 /* StreamConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamConfig.swift; sourceTree = "<group>"; };
 		EB47C96DB79E08E180702804 /* DestinationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DestinationsView.swift; sourceTree = "<group>"; };
 		EF2E3194A74BCE2AE24EF7A9 /* ScoreboardPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreboardPanelView.swift; sourceTree = "<group>"; };
@@ -368,7 +368,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 1430;
+				LastUpgradeCheck = 2700;
 				TargetAttributes = {
 					12110C692403AC43CAE797F9 = {
 						ProvisioningStyle = Automatic;
@@ -511,6 +511,7 @@
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -524,6 +525,7 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 6.0;
@@ -614,6 +616,7 @@
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -634,6 +637,7 @@
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 6.0;
